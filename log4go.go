@@ -49,7 +49,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-    "path/filepath"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -81,7 +81,7 @@ const (
 )
 
 // Default level passed to runtime.Caller
-const DefaultFileDepth int = 2
+var DefaultFileDepth int = 2
 
 // Logging level strings
 var (
