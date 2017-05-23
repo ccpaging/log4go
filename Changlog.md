@@ -1,3 +1,7 @@
+2017-05-23
+
+* Change const DefaultFileDepth as var DefaultCallerSkip
+
 2016-03-03
 
 * start goroutine to delete expired log files. Merge from <https://github.com/yougg/log4go>

@@ -7,6 +7,8 @@ import (
 import l4g "github.com/ccpaging/log4go"
 
 func main() {
+	l4g.DefaultCallerSkip = 2
+
 	log := l4g.NewLogger()
 	defer log.Close()
 	log.AddFilter("stdout", l4g.DEBUG, l4g.NewConsoleLogWriter())

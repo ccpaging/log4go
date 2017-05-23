@@ -80,9 +80,6 @@ const (
 	CRITICAL
 )
 
-// Default level passed to runtime.Caller
-var DefaultFileDepth int = 2
-
 // Logging level strings
 var (
 	levelStrings = [...]string{"FNST", "FINE", "DEBG", "TRAC", "INFO", "WARN", "EROR", "CRIT"}
@@ -97,9 +94,13 @@ func (l Level) String() string {
 
 /****** Variables ******/
 var (
+	// Default skip passed to runtime.Caller to get file name/line
+	// May require tweaking if you want to wrap the logger
+	DefaultCallerSkip = 2
+
 	// LogBufferLength specifies how many log messages a particular log4go
 	// logger can buffer at a time before writing them.
-	LogBufferLength = 32
+	DefaultBufferLength = 32
 )
 
 /****** LogRecord ******/
@@ -132,17 +133,18 @@ type Filter struct {
 	Level Level
 
 	rec 	chan *LogRecord	// write queue
-	closing bool	// true if Socket was closed at API level
+	closed 	bool	// true if Socket was closed at API level
 
 	LogWriter
 }
 
 func NewFilter(lvl Level, writer LogWriter) *Filter {
 	f := &Filter {
-		rec: 		make(chan *LogRecord, LogBufferLength),
-		closing: 	false,
-		
 		Level:		lvl,
+
+		rec: 		make(chan *LogRecord, DefaultBufferLength),
+		closed: 	false,
+		
 		LogWriter:	writer,
 	}
 	
@@ -151,7 +153,7 @@ func NewFilter(lvl Level, writer LogWriter) *Filter {
 }
 	
 func (f *Filter) WriteToChan(rec *LogRecord) {
-	if f.closing {
+	if f.closed {
 		fmt.Fprintf(os.Stderr, "LogWriter: channel has been closed. Message is [%s]\n", rec.Message)
 		return
 	}
@@ -171,7 +173,7 @@ func (f *Filter) run() {
 }
 
 func (f *Filter) Close() {
-	if f.closing {
+	if f.closed {
 		return
 	}
 	// sleep at most one second and let go routine running
@@ -184,7 +186,7 @@ func (f *Filter) Close() {
 	}
 
 	// block write channel
-	f.closing = true
+	f.closed = true
 
 	defer f.LogWriter.Close()
 
@@ -279,7 +281,7 @@ func (log Logger) intLogf(lvl Level, format string, args ...interface{}) {
 	}
 
 	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(DefaultFileDepth)
+	pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
 	src := ""
 	if ok {
 		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
@@ -308,7 +310,7 @@ func (log Logger) intLogc(lvl Level, closure func() string) {
 	}
 
 	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(DefaultFileDepth)
+	pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
 	src := ""
 	if ok {
 		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
