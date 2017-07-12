@@ -122,9 +122,9 @@ func TestConsoleLogWriter(t *testing.T) {
 
 func TestFileLogWriter(t *testing.T) {
 	defer func(buflen int) {
-		LogBufferLength = buflen
-	}(LogBufferLength)
-	LogBufferLength = 0
+		DefaultBufferLength = buflen
+	}(DefaultBufferLength)
+	DefaultBufferLength = 0
 
 	w := NewFileLogWriter(testLogFile, false)
 	if w == nil {
@@ -145,9 +145,9 @@ func TestFileLogWriter(t *testing.T) {
 
 func TestXMLLogWriter(t *testing.T) {
 	defer func(buflen int) {
-		LogBufferLength = buflen
-	}(LogBufferLength)
-	LogBufferLength = 0
+		DefaultBufferLength = buflen
+	}(DefaultBufferLength)
+	DefaultBufferLength = 0
 
 	w := NewXMLLogWriter(testLogFile, false)
 	if w == nil {
@@ -226,9 +226,9 @@ func TestLogOutput(t *testing.T) {
 
 	// Unbuffered output
 	defer func(buflen int) {
-		LogBufferLength = buflen
-	}(LogBufferLength)
-	LogBufferLength = 0
+		DefaultBufferLength = buflen
+	}(DefaultBufferLength)
+	DefaultBufferLength = 0
 
 	l := make(Logger)
 

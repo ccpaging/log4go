@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"runtime"
+	"path/filepath"
 )
 
 var (
@@ -14,7 +16,9 @@ var (
 )
 
 func init() {
-	Global = NewDefaultLogger(DEBUG)
+	Global = Logger{
+		"stdout": NewFilter(DEBUG, NewConsoleLogWriter().SetColor(true).SetFormat("%T %L %s %M")),
+	}
 }
 
 // Wrapper for (*Logger).LoadConfiguration
@@ -36,58 +40,131 @@ func Close() {
 	Global.Close()
 }
 
-func Crash(args ...interface{}) {
-	if len(args) > 0 {
-		Global.intLogf(CRITICAL, strings.Repeat(" %v", len(args))[1:], args...)
+// Compatibility with `log`
+func compat(lvl Level, calldepth int, args ...interface{}) {
+	// Determine caller func
+	pc, _, lineno, ok := runtime.Caller(calldepth)
+	src := ""
+	if ok {
+		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
 	}
-	panic(args)
+
+	msg := ""
+	if len(args) > 0 {
+		msg = fmt.Sprintf(strings.Repeat(" %v", len(args))[1:], args...)
+	}
+	msg = strings.TrimRight(msg, "\r\n")
+
+	Global.Log(lvl, src, msg)
+	if lvl == ERROR {
+		Global.Close()
+		os.Exit(0)
+	} else if lvl == CRITICAL {
+		Global.Close()
+		panic(msg)
+	}
+}
+
+func compatf(lvl Level, calldepth int, format string, args ...interface{}) {
+	// Determine caller func
+	pc, _, lineno, ok := runtime.Caller(calldepth)
+	src := ""
+	if ok {
+		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+	}
+
+	msg := fmt.Sprintf(format, args...)
+	msg = strings.TrimRight(msg, "\r\n")
+
+	Global.Log(lvl, src, msg)
+	if lvl == ERROR {
+		Global.Close()
+		os.Exit(0)
+	} else if lvl == CRITICAL {
+		Global.Close()
+		panic(msg)
+	}
+}
+
+func Crash(args ...interface{}) {
+	compat(CRITICAL, DefaultCallerSkip, args ...)
 }
 
 // Logs the given message and crashes the program
 func Crashf(format string, args ...interface{}) {
-	Global.intLogf(CRITICAL, format, args...)
-	Global.Close() // so that hopefully the messages get logged
-	panic(fmt.Sprintf(format, args...))
+	compatf(CRITICAL, DefaultCallerSkip, format, args ...)
 }
 
 // Compatibility with `log`
 func Exit(args ...interface{}) {
-	if len(args) > 0 {
-		Global.intLogf(ERROR, strings.Repeat(" %v", len(args))[1:], args...)
-	}
-	Global.Close() // so that hopefully the messages get logged
-	os.Exit(0)
+	compat(ERROR, DefaultCallerSkip, args ...)
 }
 
 // Compatibility with `log`
 func Exitf(format string, args ...interface{}) {
-	Global.intLogf(ERROR, format, args...)
-	Global.Close() // so that hopefully the messages get logged
-	os.Exit(0)
+	compatf(ERROR, DefaultCallerSkip, format, args ...)
 }
 
 // Compatibility with `log`
 func Stderr(args ...interface{}) {
-	if len(args) > 0 {
-		Global.intLogf(ERROR, strings.Repeat(" %v", len(args))[1:], args...)
-	}
+	compat(WARNING, DefaultCallerSkip, args ...)
 }
 
 // Compatibility with `log`
 func Stderrf(format string, args ...interface{}) {
-	Global.intLogf(ERROR, format, args...)
+	compatf(WARNING, DefaultCallerSkip, format, args ...)
 }
 
 // Compatibility with `log`
 func Stdout(args ...interface{}) {
-	if len(args) > 0 {
-		Global.intLogf(INFO, strings.Repeat(" %v", len(args))[1:], args...)
-	}
+	compat(INFO, DefaultCallerSkip, args ...)
 }
 
 // Compatibility with `log`
 func Stdoutf(format string, args ...interface{}) {
-	Global.intLogf(INFO, format, args...)
+	compatf(INFO, DefaultCallerSkip, format, args ...)
+}
+
+// Compatibility with `log`
+func Fatal(v ...interface{}) {
+	compat(ERROR, DefaultCallerSkip, v ...)
+}
+
+func Fatalf(format string, v ...interface{}) {
+	compatf(ERROR, DefaultCallerSkip, format, v ...)
+}
+
+func Fatalln(v ...interface{}) {
+	compat(ERROR, DefaultCallerSkip, v ...)
+}
+
+func Output(calldepth int, s string) error {
+	compat(INFO, calldepth, s)
+	return nil
+}
+
+func Panic(v ...interface{}) {
+	compat(CRITICAL, DefaultCallerSkip, v ...)
+}
+
+func Panicf(format string, v ...interface{}) {
+	compatf(CRITICAL, DefaultCallerSkip, format, v ...)
+}
+
+func Panicln(v ...interface{}) {
+	compat(CRITICAL, DefaultCallerSkip, v ...)
+}
+
+func Print(v ...interface{}) {
+	compat(INFO, DefaultCallerSkip, v ...)
+}
+
+func Printf(format string, v ...interface{}) {
+	compatf(INFO, DefaultCallerSkip, format, v ...)
+}
+
+func Println(v ...interface{}) {
+	compat(INFO, DefaultCallerSkip, v ...)
 }
 
 // Send a log message manually

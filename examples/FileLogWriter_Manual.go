@@ -20,16 +20,16 @@ func main() {
 	log := l4g.NewLogger()
 
 	// Create a default logger that is logging messages of FINE or higher
-	log.AddFilter("file", l4g.FINE, l4g.NewFileLogWriter(filename))
+	log.AddFilter("file", l4g.FINE, l4g.NewFileLogWriter(filename, false))
 	log.Close()
 
 	/* Can also specify manually via the following: (these are the defaults) */
-	flw := l4g.NewFileLogWriter(filename)
+	flw := l4g.NewFileLogWriter(filename, true)
 	flw.SetFormat("[%D %T] [%L] (%S) %M")
-	flw.SetRotate(true)
 	flw.SetRotateSize(1024)
 	flw.SetRotateLines(10)
 	flw.SetRotateDaily(true)
+	flw.SetRotateBackup(10)
 	log.AddFilter("file", l4g.FINE, flw)
 
 	// Log some experimental messages

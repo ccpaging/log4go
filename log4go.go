@@ -53,12 +53,11 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	"encoding/json"
 )
 
 // Version information
 const (
-	L4G_VERSION = "log4go-v4.0.1"
+	L4G_VERSION = "log4go-v4.0.2"
 	L4G_MAJOR   = 4
 	L4G_MINOR   = 0
 	L4G_BUILD   = 1
@@ -342,26 +341,6 @@ func (log Logger) Log(lvl Level, source, message string) {
 	}
 
 	log.dispatch(rec)
-}
-
-// Send a log message with manual level, source, and message.
-func (log Logger) Json(data []byte) {
-	var rec LogRecord
-	
-	// Make the log record
-	err := json.Unmarshal(data, &rec)
-	if err != nil {
-		// log to standard output
-		msg := "Err: " + err.Error() + " - " + string(data[0:])
-		log.intLogf(WARNING, msg)
-		return
-	}
-	
-	if log.skip(rec.Level) {
-		return
-	}
-
-	log.dispatch(&rec)
 }
 
 // Logf logs a formatted log message at the given log level, using the caller as

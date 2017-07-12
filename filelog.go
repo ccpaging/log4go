@@ -60,11 +60,12 @@ func (w *FileLogWriter) Close() {
 //
 // The standard log-line format is:
 //   [%D %T] [%L] (%S) %M
-func NewFileLogWriter(fname string) *FileLogWriter {
+func NewFileLogWriter(fname string, rotate bool) *FileLogWriter {
 	w := &FileLogWriter{
 		filename: fname,
 		format:   "[%D %z %T] [%L] (%S) %M",
-		rotate:   false,
+		rotate:   rotate,
+		maxbackup: 999,
 	}
 
 	// open the file for the first time
@@ -112,6 +113,7 @@ func (w *FileLogWriter) intRotate() error {
 		w.file.Close()
 	}
 
+	// fmt.Fprintf(os.Stderr, "FileLogWriter: %v\n", w)
 	now := time.Now()
 	if w.rotate {
 		_, err := os.Lstat(w.filename)
@@ -129,16 +131,11 @@ func (w *FileLogWriter) intRotate() error {
 				_, err = os.Lstat(renameto)
 			}
 
-			// return error if the last file checked still existed
-			if err == nil {
-				return fmt.Errorf("Cannot find free log number to rename")
-			}
+			if err != nil {	// Rename the file to its new
+				os.Rename(w.filename, renameto)
+				// Continue even failed
+			} // else no free log file name to rotate
 
-			// Rename the file to its newfound home
-			err = os.Rename(w.filename, renameto)
-			if err != nil {
-				return err
-			}
 		}
 	}
 
@@ -264,8 +261,8 @@ func (w *FileLogWriter) SetRotateBackup(maxbackup int) *FileLogWriter {
 
 // NewXMLLogWriter is a utility method for creating a FileLogWriter set up to
 // output XML record log messages instead of line-based ones.
-func NewXMLLogWriter(fname string) *FileLogWriter {
-	return NewFileLogWriter(fname).SetFormat(
+func NewXMLLogWriter(fname string, rotate bool) *FileLogWriter {
+	return NewFileLogWriter(fname, rotate).SetFormat(
 		`	<record level="%L">
 		<timestamp>%D %T</timestamp>
 		<source>%S</source>

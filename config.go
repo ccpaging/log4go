@@ -266,12 +266,11 @@ func propToFileLogWriter(filename string, props []kvProperty, enabled bool) (*Fi
 		return nil, true
 	}
 
-	flw := NewFileLogWriter(file)
+	flw := NewFileLogWriter(file, rotate)
 	if flw == nil {
 		return nil, false
 	}
 	flw.SetFormat(format)
-	flw.SetRotate(rotate)
 	flw.SetRotateLines(maxlines)
 	flw.SetRotateSize(maxsize)
 	flw.SetRotateDays(maxdays)
@@ -316,8 +315,7 @@ func propToXMLLogWriter(filename string, props []kvProperty, enabled bool) (*Fil
 		return nil, true
 	}
 
-	xlw := NewXMLLogWriter(file)
-	xlw.SetRotate(rotate)
+	xlw := NewXMLLogWriter(file, rotate)
 	xlw.SetRotateLines(maxrecords)
 	xlw.SetRotateSize(maxsize)
 	xlw.SetRotateDaily(daily)

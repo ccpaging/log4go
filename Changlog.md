@@ -1,3 +1,11 @@
+2017-07-12
+
+* Fix bug: Initial FileLogWriter.maxbackup = 999
+
+* Restore function parameter: NewFileLogWriter(fname string, rotate bool)
+
+* Campatable https://golang.org/pkg/log function like log.Print(), log.Println() etc. 
+
 2017-05-23
 
 * Change const DefaultFileDepth as var DefaultCallerSkip

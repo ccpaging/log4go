@@ -1,3 +1,4 @@
+*.bak
 trace*.*
 *.log
 *.out

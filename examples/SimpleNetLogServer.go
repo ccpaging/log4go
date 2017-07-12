@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"encoding/json"
+	log "github.com/ccpaging/log4go"
 )
 
-import l4g "github.com/ccpaging/log4go"
+
 
 var (
 	port = flag.String("p", "12124", "Port number to listen on")
 )
 
-func handleListener(log *l4g.Logger, listener *net.UDPConn){
+func handleListener(listener *net.UDPConn){
     var buffer [4096]byte
     
 	// read into a new buffer
@@ -28,7 +30,26 @@ func handleListener(log *l4g.Logger, listener *net.UDPConn){
         return
 	}
 
-	log.Json(buffer[:buflen])
+	// fmt.Println(string(buffer[:buflen]))
+
+	rec, err := Decode(buffer[:buflen])
+	if err != nil {
+		fmt.Printf("Err: %v, [%s]\n", err, string(buffer[:buflen]))
+	}
+	// fmt.Println(rec)
+	log.Log(rec.Level, rec.Source, rec.Message)
+}
+
+func Decode(data []byte) (*log.LogRecord, error) {
+	var rec log.LogRecord
+	
+	// Make the log record
+	err := json.Unmarshal(data, &rec)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &rec, nil
 }
 
 func checkError(err error) {
@@ -41,9 +62,6 @@ func checkError(err error) {
 func main() {
 	flag.Parse()
 
-	log := l4g.NewLogger()
-	log.AddFilter("stdout", l4g.DEBUG, l4g.NewConsoleLogWriter())
-
 	// Bind to the port
 	bind, err := net.ResolveUDPAddr("udp4", "0.0.0.0:" + *port)
 	checkError(err)
@@ -55,7 +73,7 @@ func main() {
 	checkError(err)
 
 	for {
-		handleListener(&log, listener)
+		handleListener(listener)
 	}
 
 	// This makes sure the output stream buffer is written
