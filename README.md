@@ -34,9 +34,9 @@ func main() {
     log.Info("This is Info")
 
     // Compatibility with `log`
-	log.Print("This is Print()")
-	log.Println("This is Println()")
-	log.Panic("This is Panic()")
+    log.Print("This is Print()")
+    log.Println("This is Println()")
+    log.Panic("This is Panic()")
 }
 ```
 
