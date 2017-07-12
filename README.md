@@ -47,7 +47,7 @@ Acknowledgements:
 
 Reference:
 
-1. [https://github.com/alecthomas/log4go/]
+1. <https://github.com/alecthomas/log4go/>
 2. [https://github.com/ngmoco/timber]
 3. [https://github.com/siddontang/go/tree/master/log]
 4. [https://github.com/sirupsen/logrus]
