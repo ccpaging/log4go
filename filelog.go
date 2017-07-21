@@ -258,14 +258,3 @@ func (w *FileLogWriter) SetRotateBackup(maxbackup int) *FileLogWriter {
 	w.maxbackup = maxbackup
 	return w
 }
-
-// NewXMLLogWriter is a utility method for creating a FileLogWriter set up to
-// output XML record log messages instead of line-based ones.
-func NewXMLLogWriter(fname string, rotate bool) *FileLogWriter {
-	return NewFileLogWriter(fname, rotate).SetFormat(
-		`	<record level="%L">
-		<timestamp>%D %T</timestamp>
-		<source>%S</source>
-		<message>%M</message>
-	</record>`).SetHeadFoot("<log created=\"%D %T\">", "</log>")
-}

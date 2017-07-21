@@ -12,7 +12,7 @@ import (
 import l4g "github.com/ccpaging/log4go"
 
 const (
-	filename = "flw.log"
+	filename = "_flw.log"
 )
 
 func main() {

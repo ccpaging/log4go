@@ -16,18 +16,22 @@ var (
 )
 
 func init() {
-	Global = Logger{
-		"stdout": NewFilter(DEBUG, NewConsoleLogWriter().SetColor(true).SetFormat("%T %L %s %M")),
+	Global = Logger {
+		"stdout": NewFilter(DEBUG, NewConsoleLogWriter().SetFormat("%T %L %s %M")),
 	}
+}
+
+func GetGlobalLogger() Logger {
+	return Global
 }
 
 // Wrapper for (*Logger).LoadConfiguration
 func LoadConfiguration(filename string) {
-	Global.LoadConfig(filename)
+	Global.LoadConfiguration(filename)
 }
 
-func LoadConfigBuf(filename string, buf []byte) {
-	Global.LoadConfigBuf(filename, buf)
+func LoadConfigBuf(buf []byte) {
+	Global.LoadConfigBuf(buf)
 }
 
 // Wrapper for (*Logger).AddFilter
@@ -43,10 +47,12 @@ func Close() {
 // Compatibility with `log`
 func compat(lvl Level, calldepth int, args ...interface{}) {
 	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(calldepth)
 	src := ""
-	if ok {
-		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+	if DefaultCallerSkip >= 0 {
+		pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
+		if ok {
+			src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+		}
 	}
 
 	msg := ""
@@ -67,10 +73,12 @@ func compat(lvl Level, calldepth int, args ...interface{}) {
 
 func compatf(lvl Level, calldepth int, format string, args ...interface{}) {
 	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(calldepth)
 	src := ""
-	if ok {
-		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+	if DefaultCallerSkip >= 0 {
+		pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
+		if ok {
+			src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+		}
 	}
 
 	msg := fmt.Sprintf(format, args...)

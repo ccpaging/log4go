@@ -57,10 +57,10 @@ import (
 
 // Version information
 const (
-	L4G_VERSION = "log4go-v4.0.2"
+	L4G_VERSION = "log4go-v4.0.3"
 	L4G_MAJOR   = 4
 	L4G_MINOR   = 0
-	L4G_BUILD   = 1
+	L4G_BUILD   = 3
 )
 
 /****** Constants ******/
@@ -97,9 +97,15 @@ var (
 	// May require tweaking if you want to wrap the logger
 	DefaultCallerSkip = 2
 
-	// LogBufferLength specifies how many log messages a particular log4go
+	// Default buffer length specifies how many log messages a particular log4go
 	// logger can buffer at a time before writing them.
 	DefaultBufferLength = 32
+
+	// Default log file and directory perm
+	DefaultFilePerm = os.FileMode(0660)
+
+	// Default flush size of cache writing file
+ 	DefaultFileFlush = 4096
 )
 
 /****** LogRecord ******/
@@ -247,6 +253,10 @@ func (log Logger) Close() {
 // higher.  This function should not be called from multiple goroutines.
 // Returns the logger for chaining.
 func (log Logger) AddFilter(name string, lvl Level, writer LogWriter) Logger {
+	if filt, isExist := log[name]; isExist {
+		filt.Close()
+		delete(log, name)
+	}
 	log[name] = NewFilter(lvl, writer)
 	return log
 }
@@ -280,10 +290,12 @@ func (log Logger) intLogf(lvl Level, format string, args ...interface{}) {
 	}
 
 	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
 	src := ""
-	if ok {
-		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+	if DefaultCallerSkip >= 0 {
+		pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
+		if ok {
+			src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+		}
 	}
 
 	msg := format

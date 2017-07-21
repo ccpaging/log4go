@@ -33,6 +33,7 @@ var formatCache = &formatCacheType{}
 // %L - Level (FNST, FINE, DEBG, TRAC, WARN, EROR, CRIT)
 // %S - Source
 // %s - Short Source
+// %x - Extra Short Source: just file without .go suffix
 // %M - Message
 // Ignores unknown formats
 // Recommended: "[%D %T] [%L] (%S) %M"
@@ -88,8 +89,10 @@ func FormatLogRecord(format string, rec *LogRecord) string {
 			case 'S':
 				out.WriteString(rec.Source)
 			case 's':
-				slice := strings.Split(rec.Source, "/")
-				out.WriteString(slice[len(slice)-1])
+				out.WriteString(rec.Source[strings.LastIndex(rec.Source, "/")+1:])
+			case 'x':
+				fn := rec.Source[strings.LastIndex(rec.Source, "/")+1:]
+				out.WriteString(fn[strings.LastIndex(fn, ".")+1:])
 			case 'M':
 				out.WriteString(rec.Message)
 			}

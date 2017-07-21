@@ -15,6 +15,7 @@ import (
 )
 
 const testLogFile = "_logtest.log"
+const benchLogFile = "_benchlog.log"
 
 var now time.Time = time.Unix(0, 1234567890123456789).In(time.UTC)
 
@@ -96,7 +97,6 @@ var logRecordWriteTests = []struct {
 func TestConsoleLogWriter(t *testing.T) {
 	console := new(ConsoleLogWriter)
 	
-	console.color = false
 	console.format = "[%T %z %D] [%L] [%S] %M"
 
 	r, w := io.Pipe()
@@ -143,13 +143,13 @@ func TestFileLogWriter(t *testing.T) {
 	}
 }
 
-func TestXMLLogWriter(t *testing.T) {
+func TestCacheFileLogWriter(t *testing.T) {
 	defer func(buflen int) {
 		DefaultBufferLength = buflen
 	}(DefaultBufferLength)
 	DefaultBufferLength = 0
 
-	w := NewXMLLogWriter(testLogFile, false)
+	w := NewCacheFileLogWriter(testLogFile, 0)
 	if w == nil {
 		t.Fatalf("Invalid return: w should not be nil")
 	}
@@ -161,8 +161,8 @@ func TestXMLLogWriter(t *testing.T) {
 
 	if contents, err := ioutil.ReadFile(testLogFile); err != nil {
 		t.Errorf("read(%q): %s", testLogFile, err)
-	} else if len(contents) != 177 {
-		t.Errorf("malformed xmllog: %q (%d bytes)", string(contents), len(contents))
+	} else if len(contents) != 50 {
+		t.Errorf("malformed filelog: %q (%d bytes)", string(contents), len(contents))
 	}
 }
 
@@ -305,9 +305,9 @@ func TestCountMallocs(t *testing.T) {
 	fmt.Printf("mallocs per unlogged sl.Logf(WARNING, \"%%s is a log message with level %%d\", \"This\", WARNING): %d\n", mallocs/N)
 }
 
-func TestXMLConfig(t *testing.T) {
+func TestJsonConfig(t *testing.T) {
 	const (
-		configfile = "_example.xml"
+		configfile = "_example.json"
 	)
 
 	fd, err := os.Create(configfile)
@@ -315,113 +315,98 @@ func TestXMLConfig(t *testing.T) {
 		t.Fatalf("Could not open %s for writing: %s", configfile, err)
 	}
 
-	fmt.Fprintln(fd, "<logging>")
-	fmt.Fprintln(fd, "  <filter enabled=\"true\">")
-	fmt.Fprintln(fd, "    <tag>stdout</tag>")
-	fmt.Fprintln(fd, "    <type>console</type>")
-	fmt.Fprintln(fd, "    <!-- level is (:?FINEST|FINE|DEBUG|TRACE|INFO|WARNING|ERROR) -->")
-	fmt.Fprintln(fd, "    <level>DEBUG</level>")
-	fmt.Fprintln(fd, "        <property name=\"color\">true</property>")
-	fmt.Fprintln(fd, "        <property name=\"format\">[%D %T] [%L] (%S) %M</property>")
-	fmt.Fprintln(fd, "  </filter>")
-	fmt.Fprintln(fd, "  <filter enabled=\"true\">")
-	fmt.Fprintln(fd, "    <tag>file</tag>")
-	fmt.Fprintln(fd, "    <type>file</type>")
-	fmt.Fprintln(fd, "    <level>FINEST</level>")
-	fmt.Fprintln(fd, "    <property name=\"filename\">test.log</property>")
-	fmt.Fprintln(fd, "    <!--")
-	fmt.Fprintln(fd, "       %T - Time (15:04:05 MST)")
-	fmt.Fprintln(fd, "       %t - Time (15:04)")
-	fmt.Fprintln(fd, "       %D - Date (2006/01/02)")
-	fmt.Fprintln(fd, "       %d - Date (01/02/06)")
-	fmt.Fprintln(fd, "       %L - Level (FNST, FINE, DEBG, TRAC, WARN, EROR, CRIT)")
-	fmt.Fprintln(fd, "       %S - Source")
-	fmt.Fprintln(fd, "       %M - Message")
-	fmt.Fprintln(fd, "       It ignores unknown format strings (and removes them)")
-	fmt.Fprintln(fd, "       Recommended: \"[%D %T] [%L] (%S) %M\"")
-	fmt.Fprintln(fd, "    -->")
-	fmt.Fprintln(fd, "    <property name=\"format\">[%D %T] [%L] (%S) %M</property>")
-	fmt.Fprintln(fd, "    <property name=\"rotate\">false</property> <!-- true enables log rotation, otherwise append -->")
-	fmt.Fprintln(fd, "    <property name=\"maxsize\">0M</property> <!-- \\d+[KMG]? Suffixes are in terms of 2**10 -->")
-	fmt.Fprintln(fd, "    <property name=\"maxlines\">0K</property> <!-- \\d+[KMG]? Suffixes are in terms of thousands -->")
-	fmt.Fprintln(fd, "    <property name=\"daily\">true</property> <!-- Automatically rotates when a log message is written after midnight -->")
-	fmt.Fprintln(fd, "  </filter>")
-	fmt.Fprintln(fd, "  <filter enabled=\"true\">")
-	fmt.Fprintln(fd, "    <tag>xmllog</tag>")
-	fmt.Fprintln(fd, "    <type>xml</type>")
-	fmt.Fprintln(fd, "    <level>TRACE</level>")
-	fmt.Fprintln(fd, "    <property name=\"filename\">trace.xml</property>")
-	fmt.Fprintln(fd, "    <property name=\"rotate\">true</property> <!-- true enables log rotation, otherwise append -->")
-	fmt.Fprintln(fd, "    <property name=\"maxsize\">100M</property> <!-- \\d+[KMG]? Suffixes are in terms of 2**10 -->")
-	fmt.Fprintln(fd, "    <property name=\"maxrecords\">6K</property> <!-- \\d+[KMG]? Suffixes are in terms of thousands -->")
-	fmt.Fprintln(fd, "    <property name=\"daily\">false</property> <!-- Automatically rotates when a log message is written after midnight -->")
-	fmt.Fprintln(fd, "  </filter>")
-	fmt.Fprintln(fd, "  <filter enabled=\"false\"><!-- enabled=false means this logger won't actually be created -->")
-	fmt.Fprintln(fd, "    <tag>donotopen</tag>")
-	fmt.Fprintln(fd, "    <type>socket</type>")
-	fmt.Fprintln(fd, "    <level>FINEST</level>")
-	fmt.Fprintln(fd, "    <property name=\"endpoint\">192.168.1.255:12124</property> <!-- recommend UDP broadcast -->")
-	fmt.Fprintln(fd, "    <property name=\"protocol\">udp</property> <!-- tcp or udp -->")
-	fmt.Fprintln(fd, "  </filter>")
-	fmt.Fprintln(fd, "</logging>")
+	fmt.Fprintln(fd, 
+`{
+	"filters": [
+	{
+	  "enabled": "true",
+	  "tag": "stdout",
+	  "type": "console",
+	  "level": "DEBUG",
+	  "properties": [
+		{
+		  "name": "format",
+		  "value": "[%D %T] [%L] (%S) %M"
+		}
+	  ]
+	},
+	{
+	  "enabled": "true",
+	  "tag": "file",
+	  "type": "file",
+	  "level": "FINEST",
+	  "properties": [
+		{
+		  "name": "filename",
+		  "value": "_test.log"
+		}
+	  ]
+	},
+	{
+	  "enabled": "true",
+	  "tag": "syslog",
+	  "type": "socket",
+	  "level": "FINEST",
+	  "properties": [
+		{
+		  "name": "protocol",
+		  "value": "udp"
+		},
+		{
+		  "name": "endpoint",
+		  "value": "127.0.0.1:12124"
+		}
+	  ]
+	}
+	]
+}`)
 	fd.Close()
 
-	log := make(Logger)
-	log.LoadConfig(configfile)
-	defer os.Remove("trace.xml")
-	defer os.Remove("test.log")
+	log := NewLogger()
+	log.LoadConfiguration(configfile)
+	defer os.Remove("_test.log")
 	defer log.Close()
 
 	// Make sure we got all loggers
 	if len(log) != 3 {
-		t.Fatalf("XMLConfig: Expected 3 filters, found %d", len(log))
+		t.Fatalf("JsonConfig: Expected 3 filters, found %d", len(log))
 	}
 
 	// Make sure they're the right keys
 	if _, ok := log["stdout"]; !ok {
-		t.Errorf("XMLConfig: Expected stdout logger")
+		t.Errorf("JsonConfig: Expected stdout logger")
 	}
 	if _, ok := log["file"]; !ok {
-		t.Fatalf("XMLConfig: Expected file logger")
-	}
-	if _, ok := log["xmllog"]; !ok {
-		t.Fatalf("XMLConfig: Expected xmllog logger")
+		t.Fatalf("JsonConfig: Expected file logger")
 	}
 
 	// Make sure they're the right type
 	if _, ok := log["stdout"].LogWriter.(*ConsoleLogWriter); !ok {
-		t.Fatalf("XMLConfig: Expected stdout to be ConsoleLogWriter, found %T", log["stdout"].LogWriter)
+		t.Fatalf("JsonConfig: Expected stdout to be ConsoleLogWriter, found %T", log["stdout"].LogWriter)
 	}
 	if _, ok := log["file"].LogWriter.(*FileLogWriter); !ok {
-		t.Fatalf("XMLConfig: Expected file to be *FileLogWriter, found %T", log["file"].LogWriter)
-	}
-	if _, ok := log["xmllog"].LogWriter.(*FileLogWriter); !ok {
-		t.Fatalf("XMLConfig: Expected xmllog to be *FileLogWriter, found %T", log["xmllog"].LogWriter)
+		t.Fatalf("JsonConfig: Expected file to be *FileLogWriter, found %T", log["file"].LogWriter)
 	}
 
 	// Make sure levels are set
 	if lvl := log["stdout"].Level; lvl != DEBUG {
-		t.Errorf("XMLConfig: Expected stdout to be set to level %d, found %d", DEBUG, lvl)
+		t.Errorf("JsonConfig: Expected stdout to be set to level %d, found %d", DEBUG, lvl)
 	}
 	if lvl := log["file"].Level; lvl != FINEST {
-		t.Errorf("XMLConfig: Expected file to be set to level %d, found %d", FINEST, lvl)
-	}
-	if lvl := log["xmllog"].Level; lvl != TRACE {
-		t.Errorf("XMLConfig: Expected xmllog to be set to level %d, found %d", TRACE, lvl)
+		t.Errorf("JsonConfig: Expected file to be set to level %d, found %d", FINEST, lvl)
 	}
 
 	// Make sure the w is open and points to the right file
-	if fname := log["file"].LogWriter.(*FileLogWriter).file.Name(); fname != "test.log" {
-		t.Errorf("XMLConfig: Expected file to have opened %s, found %s", "test.log", fname)
+	if fname := log["file"].LogWriter.(*FileLogWriter).file.Name(); fname != "_test.log" {
+		t.Errorf("JsonConfig: Expected file to have opened %s, found %s", "test.log", fname)
 	}
 
-	// Make sure the XLW is open and points to the right file
-	if fname := log["xmllog"].LogWriter.(*FileLogWriter).file.Name(); fname != "trace.xml" {
-		t.Errorf("XMLConfig: Expected xmllog to have opened %s, found %s", "trace.xml", fname)
+	// Save Json config file
+	err = os.Rename(configfile, "examples/singleconfig.json") // Keep this so that an example with the documentation is available
+	if err != nil {
+		t.Fatalf("Could not rename %s: %s", configfile, err)
 	}
-
-	// Move XML log file
-	os.Rename(configfile, "examples/"+configfile) // Keep this so that an example with the documentation is available
+	os.Remove(configfile)
 }
 
 func BenchmarkFormatLogRecord(b *testing.B) {
@@ -484,49 +469,105 @@ func BenchmarkConsoleUtilNotLog(b *testing.B) {
 func BenchmarkFileLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter("benchlog.log", false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Log(WARNING, "here", "This is a log message")
 	}
 	b.StopTimer()
-	os.Remove("benchlog.log")
+	sl.Close()
+	os.Remove(benchLogFile)
 }
 
 func BenchmarkFileNotLogged(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter("benchlog.log", false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Log(DEBUG, "here", "This is a log message")
 	}
 	b.StopTimer()
-	os.Remove("benchlog.log")
+	sl.Close()
+	os.Remove(benchLogFile)
 }
 
 func BenchmarkFileUtilLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter("benchlog.log", false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Info("%s is a log message", "This")
 	}
 	b.StopTimer()
-	os.Remove("benchlog.log")
+	sl.Close()
+	os.Remove(benchLogFile)
 }
 
 func BenchmarkFileUtilNotLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter("benchlog.log", false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Debug("%s is a log message", "This")
 	}
 	b.StopTimer()
-	os.Remove("benchlog.log")
+	sl.Close()
+	os.Remove(benchLogFile)
+}
+
+func BenchmarkCacheFileLog(b *testing.B) {
+	sl := make(Logger)
+	b.StopTimer()
+	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		sl.Log(WARNING, "here", "This is a log message")
+	}
+	b.StopTimer()
+	sl.Close()
+	os.Remove(benchLogFile)
+}
+
+func BenchmarkCacheFileNotLogged(b *testing.B) {
+	sl := make(Logger)
+	b.StopTimer()
+	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		sl.Log(DEBUG, "here", "This is a log message")
+	}
+	b.StopTimer()
+	sl.Close()
+	os.Remove(benchLogFile)
+}
+
+func BenchmarkCacheFileUtilLog(b *testing.B) {
+	sl := make(Logger)
+	b.StopTimer()
+	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		sl.Info("%s is a log message", "This")
+	}
+	b.StopTimer()
+	sl.Close()
+	os.Remove(benchLogFile)
+}
+
+func BenchmarkCacheFileUtilNotLog(b *testing.B) {
+	sl := make(Logger)
+	b.StopTimer()
+	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		sl.Debug("%s is a log message", "This")
+	}
+	b.StopTimer()
+	sl.Close()
+	os.Remove(benchLogFile)
 }
 
 // Benchmark results (darwin amd64 6g)
@@ -538,4 +579,3 @@ func BenchmarkFileUtilNotLog(b *testing.B) {
 //elog.BenchmarkFileNotLogged       2000000         821 ns/op
 //elog.BenchmarkFileUtilLog           50000       33945 ns/op
 //elog.BenchmarkFileUtilNotLog      1000000        1258 ns/op
-

@@ -3,163 +3,72 @@
 package log4go
 
 import (
-	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strconv"
+	"time"
 	"strings"
-	"path"
 	"encoding/json"
 )
 
-type kvProperty struct {
+type FilterProp struct {
 	Name  string `xml:"name,attr"`
 	Value string `xml:",chardata"`
 }
 
-type kvFilter struct {
+type FilterConfig struct {
 	Enabled  string        `xml:"enabled,attr"`
 	Tag      string        `xml:"tag"`
 	Level    string        `xml:"level"`
 	Type     string        `xml:"type"`
-	Properties []kvProperty `xml:"property"`
+	Properties []FilterProp `xml:"property"`
 }
 
-type Config struct {
-	Filters []kvFilter `xml:"filter"`
+type LogConfig struct {
+	Filters []FilterConfig `xml:"filter"`
 }
 
-func (log Logger) LoadConfig(filename string) {
+func (log Logger) LoadConfiguration(filename string) {
 	if len(filename) <= 0 {
 		return
 	}
 
-	// Open the configuration file
+	// Open the LogConfiguration file
 	fd, err := os.Open(filename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Could not open %q for reading: %s\n", filename, err)
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not open %q for reading. %s\n", filename, err)
 		os.Exit(1)
 	}
+	defer fd.Close()
 
 	buf, err := ioutil.ReadAll(fd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Could not read %q: %s\n", filename, err)
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not read %q. %s\n", filename, err)
 		os.Exit(1)
 	}
 
-	log.LoadConfigBuf(filename, buf)
+	log.LoadConfigBuf(buf)
 	return
 }
 
-func (log Logger) LoadConfigBuf(filename string, buf []byte) {
-	ext := path.Ext(filename)
-	ext = ext[1:]
-
-	switch ext {
-	case "xml":
-		log.LoadXMLConfig(filename, buf)
-		break
-	case "json":
-		log.LoadJSONConfig(filename, buf)
-		break
-	default:
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Unknown config file type %v. XML or JSON are supported types\n", ext)
-	}
-}
-
-// Parse Json configuration; see examples/example.json for documentation
-func (log Logger) LoadJSONConfig(filename string, contents []byte) {
-	log.Close()
-
-	jc := new(Config)
+func (log Logger) LoadConfigBuf(contents []byte) {
+	jc := new(LogConfig)
 	if err := json.Unmarshal(contents, jc); err != nil {
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Could not parse Json configuration in %q: %s\n", filename, err)
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not parse Json LogConfiguration. %s\n", err)
 		os.Exit(1)
 	}
 
-	log.ConfigToLogWriter(filename, jc)
-}
-
-// Parse XML configuration; see examples/example.xml for documentation
-func (log Logger) LoadXMLConfig(filename string, contents []byte) {
 	log.Close()
-
-	xc := new(Config)
-	if err := xml.Unmarshal(contents, xc); err != nil {
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Could not parse XML configuration in %q: %s\n", filename, err)
-		os.Exit(1)
-	}
-
-	log.ConfigToLogWriter(filename, xc)
-}
-
-func (log Logger) ConfigToLogWriter(filename string, cfg *Config) {
-	for _, kvfilt := range cfg.Filters {
-		var lw LogWriter
-		var lvl Level
-		bad, good, enabled := false, true, false
-
-		// Check required children
-		if len(kvfilt.Enabled) == 0 {
-			fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required attribute %s for filter missing in %s\n", "enabled", filename)
-			bad = true
-		} else {
-			enabled = kvfilt.Enabled != "false"
-		}
-		if len(kvfilt.Tag) == 0 {
-			fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required child <%s> for filter missing in %s\n", "tag", filename)
-			bad = true
-		}
-		if len(kvfilt.Type) == 0 {
-			fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required child <%s> for filter missing in %s\n", "type", filename)
-			bad = true
-		}
-		if len(kvfilt.Level) == 0 {
-			fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required child <%s> for filter missing in %s\n", "level", filename)
-			bad = true
-		}
-
-		switch kvfilt.Level {
-		case "FINEST":
-			lvl = FINEST
-		case "FINE":
-			lvl = FINE
-		case "DEBUG":
-			lvl = DEBUG
-		case "TRACE":
-			lvl = TRACE
-		case "INFO":
-			lvl = INFO
-		case "WARNING":
-			lvl = WARNING
-		case "ERROR":
-			lvl = ERROR
-		case "CRITICAL":
-			lvl = CRITICAL
-		default:
-			fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required child <%s> for filter has unknown value in %s: %s\n", "level", filename, kvfilt.Level)
-			bad = true
-		}
+	for _, fc := range jc.Filters {
+		bad, enabled, lvl := log.CheckFilterConfig(fc)
 
 		// Just so all of the required attributes are errored at the same time if missing
 		if bad {
 			os.Exit(1)
 		}
 
-		switch kvfilt.Type {
-		case "console":
-			lw, good = propToConsoleLogWriter(filename, kvfilt.Properties, enabled)
-		case "file":
-			lw, good = propToFileLogWriter(filename, kvfilt.Properties, enabled)
-		case "xml":
-			lw, good = propToXMLLogWriter(filename, kvfilt.Properties, enabled)
-		case "socket":
-			lw, good = propToSocketLogWriter(filename, kvfilt.Properties, enabled)
-		default:
-			fmt.Fprintf(os.Stderr, "LoadConfig: Error: Could not load configuration in %s: unknown filter type \"%s\"\n", filename, kvfilt.Type)
-			os.Exit(1)
-		}
+		lw, good := log.MakeLogWriter(fc, enabled)
 
 		// Just so all of the required params are errored at the same time if wrong
 		if !good {
@@ -171,22 +80,90 @@ func (log Logger) ConfigToLogWriter(filename string, cfg *Config) {
 			continue
 		}
 
-		log[kvfilt.Tag] = NewFilter(lvl, lw)
+		if lw == nil {
+			fmt.Fprintf(os.Stderr, "LoadConfiguration: LogWriter is nil. %v\n", fc)
+			os.Exit(1)
+		}
+
+		log.AddFilter(fc.Tag, lvl, lw)
 	}
 }
 
-func propToConsoleLogWriter(filename string, props []kvProperty, enabled bool) (*ConsoleLogWriter, bool) {
-	color := true
+func (log Logger) CheckFilterConfig(fc FilterConfig) (bad bool, enabled bool, lvl Level) {
+	bad, enabled, lvl = false, false, INFO
+
+	// Check required children
+	if len(fc.Enabled) == 0 {
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required attribute %s\n", "enabled")
+		bad = true
+	} else {
+		enabled = fc.Enabled != "false"
+	}
+	if len(fc.Tag) == 0 {
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required child <%s>\n", "tag")
+		bad = true
+	}
+	if len(fc.Type) == 0 {
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required child <%s>\n", "type")
+		bad = true
+	}
+	if len(fc.Level) == 0 {
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required child <%s>\n", "level")
+		bad = true
+	}
+
+	switch fc.Level {
+	case "FINEST":
+		lvl = FINEST
+	case "FINE":
+		lvl = FINE
+	case "DEBUG":
+		lvl = DEBUG
+	case "TRACE":
+		lvl = TRACE
+	case "INFO":
+		lvl = INFO
+	case "WARNING":
+		lvl = WARNING
+	case "ERROR":
+		lvl = ERROR
+	case "CRITICAL":
+		lvl = CRITICAL
+	default:
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required child <%s> for filter has unknown value. %s\n", "level", fc.Level)
+		bad = true
+	}
+	return bad, enabled, lvl
+}
+
+func (log Logger) MakeLogWriter(fc FilterConfig, enabled bool) (LogWriter, bool) {
+	var (
+		lw LogWriter
+		good bool
+	)
+	switch fc.Type {
+	case "console":
+		lw, good = propToConsoleLogWriter(fc.Properties, enabled)
+	case "file":
+		lw, good = log.PropToFileLogWriter(fc.Properties, enabled)
+	case "socket":
+		lw, good = propToSocketLogWriter(fc.Properties, enabled)
+	default:
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not load LogConfiguration. Unknown filter type \"%s\"\n", fc.Type)
+		return nil, false
+	}
+	return lw, good
+}
+
+func propToConsoleLogWriter(props []FilterProp, enabled bool) (*ConsoleLogWriter, bool) {
 	format := "[%D %T] [%L] (%S) %M"
 	// Parse properties
 	for _, prop := range props {
 		switch prop.Name {
-		case "color":
-			color = strings.Trim(prop.Value, " \r\n") != "false"
 		case "format":
 			format = strings.Trim(prop.Value, " \r\n")
 		default:
-			fmt.Fprintf(os.Stderr, "LoadConfig: Warning: Unknown property \"%s\" for console filter in %s\n", prop.Name, filename)
+			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for console filter\n", prop.Name)
 		}
 	}
 
@@ -196,13 +173,21 @@ func propToConsoleLogWriter(filename string, props []kvProperty, enabled bool) (
 	}
 
 	clw := NewConsoleLogWriter()
-	clw.SetColor(color)
 	clw.SetFormat(format)
 	return clw, true
 }
 
+// Parse a duration string.
+// A duration string is a possibly signed sequence of decimal numbers,
+// each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m".
+// Valid time units are "ns", "us", "ms", "s", "m", "h".
+func StrToTimeDuration(str string) int64 {
+	dur, _ := time.ParseDuration(str)
+	return int64(dur/time.Millisecond)
+}
+
 // Parse a number with K/M/G suffixes based on thousands (1000) or 2^10 (1024)
-func strToNumSuffix(str string, mult int) int {
+func StrToNumSuffix(str string, mult int) int {
 	num := 1
 	if len(str) > 1 {
 		switch str[len(str)-1] {
@@ -221,7 +206,7 @@ func strToNumSuffix(str string, mult int) int {
 	return parsed * num
 }
 
-func propToFileLogWriter(filename string, props []kvProperty, enabled bool) (*FileLogWriter, bool) {
+func (log Logger) PropToFileLogWriter(props []FilterProp, enabled bool) (*FileLogWriter, bool) {
 	file := ""
 	format := "[%D %T] [%L] (%S) %M"
 	maxlines := 0
@@ -239,25 +224,25 @@ func propToFileLogWriter(filename string, props []kvProperty, enabled bool) (*Fi
 		case "format":
 			format = strings.Trim(prop.Value, " \r\n")
 		case "maxlines":
-			maxlines = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1000)
+			maxlines = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1000)
 		case "maxsize":
-			maxsize = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1024)
+			maxsize = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1024)
 		case "maxdays":
-			maxdays = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 0)
+			maxdays = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 0)
 		case "daily":
 			daily = strings.Trim(prop.Value, " \r\n") != "false"
 		case "rotate":
 			rotate = strings.Trim(prop.Value, " \r\n") != "false"
 		case "maxBackup":
-			maxbackup = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 999)
+			maxbackup = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 999)
 		default:
-			fmt.Fprintf(os.Stderr, "LoadConfig: Warning: Unknown property \"%s\" for file filter in %s\n", prop.Name, filename)
+			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for file filter\n", prop.Name)
 		}
 	}
 
 	// Check properties
 	if len(file) == 0 {
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required property \"%s\" for file filter missing in %s\n", "filename", filename)
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required property \"%s\" for file filter missing\n", "filename")
 		return nil, false
 	}
 
@@ -279,50 +264,7 @@ func propToFileLogWriter(filename string, props []kvProperty, enabled bool) (*Fi
 	return flw, true
 }
 
-func propToXMLLogWriter(filename string, props []kvProperty, enabled bool) (*FileLogWriter, bool) {
-	file := ""
-	maxrecords := 0
-	maxsize := 0
-	daily := false
-	rotate := false
-
-	// Parse properties
-	for _, prop := range props {
-		switch prop.Name {
-		case "filename":
-			file = strings.Trim(prop.Value, " \r\n")
-		case "maxrecords":
-			maxrecords = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1000)
-		case "maxsize":
-			maxsize = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1024)
-		case "daily":
-			daily = strings.Trim(prop.Value, " \r\n") != "false"
-		case "rotate":
-			rotate = strings.Trim(prop.Value, " \r\n") != "false"
-		default:
-			fmt.Fprintf(os.Stderr, "LoadConfig: Warning: Unknown property \"%s\" for xml filter in %s\n", prop.Name, filename)
-		}
-	}
-
-	// Check properties
-	if len(file) == 0 {
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required property \"%s\" for xml filter missing in %s\n", "filename", filename)
-		return nil, false
-	}
-
-	// If it's disabled, we're just checking syntax
-	if !enabled {
-		return nil, true
-	}
-
-	xlw := NewXMLLogWriter(file, rotate)
-	xlw.SetRotateLines(maxrecords)
-	xlw.SetRotateSize(maxsize)
-	xlw.SetRotateDaily(daily)
-	return xlw, true
-}
-
-func propToSocketLogWriter(filename string, props []kvProperty, enabled bool) (*SocketLogWriter, bool) {
+func propToSocketLogWriter(props []FilterProp, enabled bool) (*SocketLogWriter, bool) {
 	endpoint := ""
 	protocol := "udp"
 
@@ -334,13 +276,13 @@ func propToSocketLogWriter(filename string, props []kvProperty, enabled bool) (*
 		case "protocol":
 			protocol = strings.Trim(prop.Value, " \r\n")
 		default:
-			fmt.Fprintf(os.Stderr, "LoadConfig: Warning: Unknown property \"%s\" for file filter in %s\n", prop.Name, filename)
+			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for file filter\n", prop.Name)
 		}
 	}
 
 	// Check properties
 	if len(endpoint) == 0 {
-		fmt.Fprintf(os.Stderr, "LoadConfig: Error: Required property \"%s\" for file filter missing in %s\n", "endpoint", filename)
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required property \"%s\" for file filter missing\n", "endpoint")
 		return nil, false
 	}
 

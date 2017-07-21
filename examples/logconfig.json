@@ -1,16 +1,12 @@
 {
-	"logconfig": {
+	"LogConfig" : {
 		"filters": [
 		{
 		  "enabled": "true",
-		  "tag": "stderr",
+		  "tag": "stdout",
 		  "type": "console",
 		  "level": "DEBUG",
 		  "properties": [
-			{
-			  "name": "color",
-			  "value": "false"
-			},
 			{
 			  "name": "format",
 			  "value": "[%D %T] [%L] (%S) %M"
@@ -25,7 +21,7 @@
 		  "properties": [
 			{
 			  "name": "filename",
-			  "value": "test.log"
+			  "value": "_test.log"
 			}
 		  ]
 		},

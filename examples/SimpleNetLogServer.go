@@ -9,8 +9,6 @@ import (
 	log "github.com/ccpaging/log4go"
 )
 
-
-
 var (
 	port = flag.String("p", "12124", "Port number to listen on")
 )
