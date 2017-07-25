@@ -6,9 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"io"
 	"strings"
-	"runtime"
-	"path/filepath"
 )
 
 var (
@@ -30,6 +29,7 @@ func LoadConfiguration(filename string) {
 	Global.LoadConfiguration(filename)
 }
 
+// Wrapper for (*Logger).LoadConfigBuf
 func LoadConfigBuf(buf []byte) {
 	Global.LoadConfigBuf(buf)
 }
@@ -45,134 +45,14 @@ func Close() {
 }
 
 // Compatibility with `log`
-func compat(lvl Level, calldepth int, args ...interface{}) {
-	// Determine caller func
-	src := ""
-	if DefaultCallerSkip >= 0 {
-		pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
-		if ok {
-			src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+// New creates a new Logger. The out variable sets the
+// destination to which log data will be written.
+// The prefix appears at the beginning of each generated log line.
+// The flag argument defines the logging properties.
+func New(out io.Writer, prefix string, flag int) *Logger {
+	return &Logger {
+			"stdout": NewFilter(DEBUG, NewOutLogWriter(out, prefix, flag)),
 		}
-	}
-
-	msg := ""
-	if len(args) > 0 {
-		msg = fmt.Sprintf(strings.Repeat(" %v", len(args))[1:], args...)
-	}
-	msg = strings.TrimRight(msg, "\r\n")
-
-	Global.Log(lvl, src, msg)
-	if lvl == ERROR {
-		Global.Close()
-		os.Exit(0)
-	} else if lvl == CRITICAL {
-		Global.Close()
-		panic(msg)
-	}
-}
-
-func compatf(lvl Level, calldepth int, format string, args ...interface{}) {
-	// Determine caller func
-	src := ""
-	if DefaultCallerSkip >= 0 {
-		pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
-		if ok {
-			src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
-		}
-	}
-
-	msg := fmt.Sprintf(format, args...)
-	msg = strings.TrimRight(msg, "\r\n")
-
-	Global.Log(lvl, src, msg)
-	if lvl == ERROR {
-		Global.Close()
-		os.Exit(0)
-	} else if lvl == CRITICAL {
-		Global.Close()
-		panic(msg)
-	}
-}
-
-func Crash(args ...interface{}) {
-	compat(CRITICAL, DefaultCallerSkip, args ...)
-}
-
-// Logs the given message and crashes the program
-func Crashf(format string, args ...interface{}) {
-	compatf(CRITICAL, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Exit(args ...interface{}) {
-	compat(ERROR, DefaultCallerSkip, args ...)
-}
-
-// Compatibility with `log`
-func Exitf(format string, args ...interface{}) {
-	compatf(ERROR, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Stderr(args ...interface{}) {
-	compat(WARNING, DefaultCallerSkip, args ...)
-}
-
-// Compatibility with `log`
-func Stderrf(format string, args ...interface{}) {
-	compatf(WARNING, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Stdout(args ...interface{}) {
-	compat(INFO, DefaultCallerSkip, args ...)
-}
-
-// Compatibility with `log`
-func Stdoutf(format string, args ...interface{}) {
-	compatf(INFO, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Fatal(v ...interface{}) {
-	compat(ERROR, DefaultCallerSkip, v ...)
-}
-
-func Fatalf(format string, v ...interface{}) {
-	compatf(ERROR, DefaultCallerSkip, format, v ...)
-}
-
-func Fatalln(v ...interface{}) {
-	compat(ERROR, DefaultCallerSkip, v ...)
-}
-
-func Output(calldepth int, s string) error {
-	compat(INFO, calldepth, s)
-	return nil
-}
-
-func Panic(v ...interface{}) {
-	compat(CRITICAL, DefaultCallerSkip, v ...)
-}
-
-func Panicf(format string, v ...interface{}) {
-	compatf(CRITICAL, DefaultCallerSkip, format, v ...)
-}
-
-func Panicln(v ...interface{}) {
-	compat(CRITICAL, DefaultCallerSkip, v ...)
-}
-
-func Print(v ...interface{}) {
-	compat(INFO, DefaultCallerSkip, v ...)
-}
-
-func Printf(format string, v ...interface{}) {
-	compatf(INFO, DefaultCallerSkip, format, v ...)
-}
-
-func Println(v ...interface{}) {
-	compat(INFO, DefaultCallerSkip, v ...)
 }
 
 // Send a log message manually
@@ -364,4 +244,83 @@ func Critical(arg0 interface{}, args ...interface{}) error {
 		return errors.New(fmt.Sprint(first) + fmt.Sprintf(strings.Repeat(" %v", len(args)), args...))
 	}
 	return nil
+}
+
+// These functions Compatibility with `log`
+// Write to the standard logger.
+
+// Output writes the output for a logging event. The string s contains
+// the text to print after the prefix specified by the flags of the
+// Logger. A newline is appended if the last character of s is not
+// already a newline. Calldepth is the count of the number of
+// frames to skip when computing the file name and line number
+// if Llongfile or Lshortfile is set; a value of 1 will print the details
+// for the caller of Output.
+func Output(calldepth int, s string) error {
+	Global.CompatOutput(INFO, calldepth, s) // +1 for this frame.
+	return nil
+}
+
+
+// Print calls Output to print to the standard logger.
+// Arguments are handled in the manner of fmt.Print.
+func Print(v ...interface{}) {
+	Global.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprint(v...))
+}
+
+// Printf calls Output to print to the standard logger.
+// Arguments are handled in the manner of fmt.Printf.
+func Printf(format string, v ...interface{}) {
+	Global.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprintf(format, v...))
+}
+
+// Println calls Output to print to the standard logger.
+// Arguments are handled in the manner of fmt.Println.
+func Println(v ...interface{}) {
+	Global.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprintln(v...))
+}
+
+// Fatal is equivalent to Print() followed by a call to os.Exit(1).
+func Fatal(v ...interface{}) {
+	Global.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprint(v...))
+	Global.Close()
+	os.Exit(1)
+}
+
+// Fatalf is equivalent to Printf() followed by a call to os.Exit(1).
+func Fatalf(format string, v ...interface{}) {
+	Global.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprintf(format, v...))
+	Global.Close()
+	os.Exit(1)
+}
+
+// Fatalln is equivalent to Println() followed by a call to os.Exit(1).
+func Fatalln(v ...interface{}) {
+	Global.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprintln(v...))
+	Global.Close()
+	os.Exit(1)
+}
+
+// Panic is equivalent to Print() followed by a call to panic().
+func Panic(v ...interface{}) {
+	s := fmt.Sprint(v...)
+	Global.CompatOutput(CRITICAL, DefaultCallerSkip, s)
+	Global.Close()
+	panic(s)
+}
+
+// Panicf is equivalent to Printf() followed by a call to panic().
+func Panicf(format string, v ...interface{}) {
+	s := fmt.Sprintf(format, v...)
+	Global.CompatOutput(CRITICAL, DefaultCallerSkip, s)
+	Global.Close()
+	panic(s)
+}
+
+// Panicln is equivalent to Println() followed by a call to panic().
+func Panicln(v ...interface{}) {
+	s := fmt.Sprintln(v...)
+	Global.CompatOutput(CRITICAL, DefaultCallerSkip, s)
+	Global.Close()
+	panic(s)
 }

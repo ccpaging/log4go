@@ -100,12 +100,6 @@ var (
 	// Default buffer length specifies how many log messages a particular log4go
 	// logger can buffer at a time before writing them.
 	DefaultBufferLength = 32
-
-	// Default log file and directory perm
-	DefaultFilePerm = os.FileMode(0660)
-
-	// Default flush size of cache writing file
- 	DefaultFileFlush = 4096
 )
 
 /****** LogRecord ******/
@@ -541,4 +535,120 @@ func (log Logger) Critical(arg0 interface{}, args ...interface{}) error {
 	}
 	log.intLogf(lvl, msg)
 	return errors.New(msg)
+}
+
+// Compatibility with `log`
+// Output writes the output for a logging event.
+func (log Logger) CompatOutput(lvl Level, calldepth int, s string) {
+	if log.skip(lvl) {
+		return
+	}
+
+	// Determine caller func
+	src := ""
+	if calldepth >= 0 {
+		pc, _, lineno, ok := runtime.Caller(calldepth)
+		if ok {
+			src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+		}
+	}
+
+	// Make the log record
+	rec := &LogRecord{
+		Level:   lvl,
+		Created: time.Now(),
+		Source:  src,
+		Message: strings.TrimRight(s, "\r\n"),
+	}
+
+	log.dispatch(rec)
+}
+
+// Compatibility with `log`
+// Output writes the output for a logging event. The string s contains
+// the text to print after the prefix specified by the flags of the
+// Logger. A newline is appended if the last character of s is not
+// already a newline. Calldepth is used to recover the PC and is
+// provided for generality, although at the moment on all pre-defined
+// paths it will be 2.
+// Output writes the output for a logging event. The string s contains
+// the text to print after the prefix specified by the flags of the
+// Logger. A newline is appended if the last character of s is not
+// already a newline. Calldepth is used to recover the PC and is
+// provided for generality, although at the moment on all pre-defined
+// paths it will be 2.
+func (l Logger) Output(calldepth int, s string) error {
+	l.CompatOutput(INFO, calldepth, s)
+	return nil
+}
+
+// Compatibility with `log`
+// Printf calls l.Output to print to the logger.
+// Arguments are handled in the manner of fmt.Printf.
+func (l Logger) Printf(format string, v ...interface{}) {
+	l.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprintf(format, v...))
+}
+
+// Compatibility with `log`
+// Print calls l.Output to print to the logger.
+// Arguments are handled in the manner of fmt.Print.
+func (l Logger) Print(v ...interface{}) {
+ 	l.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprint(v...))
+}
+
+// Compatibility with `log`
+// Println calls l.Output to print to the logger.
+// Arguments are handled in the manner of fmt.Println.
+func (l Logger) Println(v ...interface{}) {
+	l.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprintln(v...))
+}
+
+// Compatibility with `log`
+// Fatal is equivalent to l.Print() followed by a call to os.Exit(1).
+func (l Logger) Fatal(v ...interface{}) {
+	l.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprint(v...))
+	l.Close()
+	os.Exit(1)
+}
+
+// Compatibility with `log`
+// Fatalf is equivalent to l.Printf() followed by a call to os.Exit(1).
+func (l Logger) Fatalf(format string, v ...interface{}) {
+	l.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprintf(format, v...))
+	l.Close()
+	os.Exit(1)
+}
+
+// Compatibility with `log`
+// Fatalln is equivalent to l.Println() followed by a call to os.Exit(1).
+func (l Logger) Fatalln(v ...interface{}) {
+	l.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprintln(v...))
+	l.Close()
+	os.Exit(1)
+}
+
+// Compatibility with `log`
+// Panic is equivalent to l.Print() followed by a call to panic().
+func (l Logger) Panic(v ...interface{}) {
+	s := fmt.Sprint(v...)
+	l.CompatOutput(CRITICAL, DefaultCallerSkip, s)
+	l.Close()
+	panic(s)
+}
+
+// Panicf is equivalent to l.Printf() followed by a call to panic().
+func (l Logger) Panicf(format string, v ...interface{}) {
+	s := fmt.Sprintf(format, v...)
+	l.CompatOutput(CRITICAL, DefaultCallerSkip, s)
+	l.Close()
+	panic(s)
+}
+
+// Compatibility with `log`
+// Panicln is equivalent to l.Println() followed by a call to panic().
+func (l Logger) Panicln(v ...interface{}) {
+	s := fmt.Sprintln(v...)
+	l.CompatOutput(CRITICAL, DefaultCallerSkip, s)
+	l.Close()
+	panic(s)
 }

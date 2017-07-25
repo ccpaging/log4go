@@ -100,7 +100,7 @@ func TestConsoleLogWriter(t *testing.T) {
 	console.format = "[%T %z %D] [%L] [%S] %M"
 
 	r, w := io.Pipe()
-	console.iow = w
+	console.out = w
 
 	defer console.Close()
 
@@ -344,7 +344,7 @@ func TestJsonConfig(t *testing.T) {
 	},
 	{
 	  "enabled": "true",
-	  "tag": "syslog",
+	  "tag": "socket",
 	  "type": "socket",
 	  "level": "FINEST",
 	  "properties": [

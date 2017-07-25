@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const (
+var (
 	FORMAT_DEFAULT = "[%D %T %z] [%L] (%S) %M"
 	FORMAT_SHORT   = "[%t %d] [%L] %M"
 	FORMAT_ABBREV  = "[%L] %M"

@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+var (
+	// Default log file and directory perm
+	DefaultFilePerm = os.FileMode(0660)
+
+	// Default flush size of cache writing file
+ 	DefaultFileFlush = 4096
+)
+
 // This log writer sends output to a file
 type FileLogWriter struct {
 	// The opened file
@@ -63,7 +71,7 @@ func (w *FileLogWriter) Close() {
 func NewFileLogWriter(fname string, rotate bool) *FileLogWriter {
 	w := &FileLogWriter{
 		filename: fname,
-		format:   "[%D %z %T] [%L] (%S) %M",
+		format:   FORMAT_DEFAULT,
 		rotate:   rotate,
 		maxbackup: 999,
 	}

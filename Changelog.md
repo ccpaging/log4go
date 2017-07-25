@@ -1,3 +1,9 @@
+2017-07-25
+
+* Compatibility with `log`。 New example_log.go to test it.
+
+* Add new format "%x", extra short source. Just file without .go suffix 
+
 2017-07-21
 
 * Create new filter CacheFileLogWriter

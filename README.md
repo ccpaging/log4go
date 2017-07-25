@@ -6,13 +6,9 @@ Installation:
 
 - Run `go get github.com/ccpaging/log4go`
 
-- Run `go get github.com/daviddengcn/go-colortext`
-
 OR
 
 - Run `go install github.com/ccpaging/log4go`
-
-- Run `go install github.com/daviddengcn/go-colortext`
 
 Usage:
 
@@ -42,12 +38,8 @@ func main() {
 
 Acknowledgements:
 
-- ccpaging
-  For providing awesome patches to bring colored log4go up to the latest Go spec
-
-Reference:
-
 1. <https://github.com/alecthomas/log4go/>
 2. <https://github.com/ngmoco/timber>
 3. <https://github.com/siddontang/go/tree/master/log>
 4. <https://github.com/sirupsen/logrus>
+5. <https://github.com/YoungPioneers/blog4go>

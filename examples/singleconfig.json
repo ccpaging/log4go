@@ -26,7 +26,7 @@
 	},
 	{
 	  "enabled": "true",
-	  "tag": "syslog",
+	  "tag": "socket",
 	  "type": "socket",
 	  "level": "FINEST",
 	  "properties": [
