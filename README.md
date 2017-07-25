@@ -1,6 +1,18 @@
-# log4go colored
+# log4go
 
-Please see http://log4go.googlecode.com/
+Forked from http://log4go.googlecode.com/
+
+Almost redesign.
+
+* Sync write, Structured, Extendable
+
+* Format message with date, time, zone, source, line number
+
+* File config
+
+* Fast log file writer with rotate
+
+* Compatibility with golang `log`
 
 Installation:
 
