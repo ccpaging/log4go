@@ -2,13 +2,11 @@
 
 Forked from http://log4go.googlecode.com/
 
-Almost redesign.
-
 * Sync write, Structured, Extendable
 
 * Format message with date, time, zone, source, line number
 
-* File config
+* File configuration
 
 * Fast log file writer with rotate
 
