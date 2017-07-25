@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.Lshortfile)
 	log.Output(log.DefaultCallerSkip, "Hello, log file!")
 	log.Print("Hello, log file!")
 	log.Close()
@@ -23,5 +24,5 @@ func main() {
 
 	fmt.Print(&buf)
 	// Output:
-	// logger: example.go:20: Hello, log file!
+	// logger: example.go:21: Hello, log file!
 }

@@ -44,17 +44,6 @@ func Close() {
 	Global.Close()
 }
 
-// Compatibility with `log`
-// New creates a new Logger. The out variable sets the
-// destination to which log data will be written.
-// The prefix appears at the beginning of each generated log line.
-// The flag argument defines the logging properties.
-func New(out io.Writer, prefix string, flag int) *Logger {
-	return &Logger {
-			"stdout": NewFilter(DEBUG, NewOutLogWriter(out, prefix, flag)),
-		}
-}
-
 // Send a log message manually
 // Wrapper for (*Logger).Log
 func Log(lvl Level, source, message string) {
@@ -247,6 +236,38 @@ func Critical(arg0 interface{}, args ...interface{}) error {
 }
 
 // These functions Compatibility with `log`
+
+// New creates a new Logger. The out variable sets the
+// destination to which log data will be written.
+// The prefix appears at the beginning of each generated log line.
+// The flag argument defines the logging properties.
+func New(out io.Writer, prefix string, flag int) *Logger {
+	return &Logger {
+			"stdout": NewFilter(DEBUG, NewOutLogWriter(out, prefix, flag)),
+		}
+}
+
+// SetOutput sets the output destination for the standard logger.
+func SetOutput(w io.Writer) {
+	if clw, ok := Global["stdout"].LogWriter.(*ConsoleLogWriter); ok {
+		clw.SetOutput(w)
+	}
+}
+
+// SetFlags sets the output flags for the standard logger.
+func SetFlags(flag int) {
+	if clw, ok := Global["stdout"].LogWriter.(*ConsoleLogWriter); ok {
+		clw.SetFlags(flag)
+	}
+}
+
+// SetPrefix sets the output prefix for the standard logger.
+func SetPrefix(prefix string) {
+	if clw, ok := Global["stdout"].LogWriter.(*ConsoleLogWriter); ok {
+		clw.SetPrefix(prefix)
+	}
+}
+
 // Write to the standard logger.
 
 // Output writes the output for a logging event. The string s contains
@@ -260,7 +281,6 @@ func Output(calldepth int, s string) error {
 	Global.CompatOutput(INFO, calldepth, s) // +1 for this frame.
 	return nil
 }
-
 
 // Print calls Output to print to the standard logger.
 // Arguments are handled in the manner of fmt.Print.

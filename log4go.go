@@ -150,8 +150,10 @@ func NewFilter(lvl Level, writer LogWriter) *Filter {
 	go f.run()
 	return f
 }
-	
-func (f *Filter) WriteToChan(rec *LogRecord) {
+
+// This is the filter's output method. This will block if the output
+// buffer is full. 
+func (f *Filter) writeToChan(rec *LogRecord) {
 	if f.closed {
 		fmt.Fprintf(os.Stderr, "LogWriter: channel has been closed. Message is [%s]\n", rec.Message)
 		return
@@ -273,7 +275,7 @@ func (log Logger) dispatch(rec *LogRecord) {
 		if rec.Level < filt.Level {
 			continue
 		}
-		filt.WriteToChan(rec)
+		filt.writeToChan(rec)
 	}
 }
 
