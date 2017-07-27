@@ -243,13 +243,13 @@ func propToFileLogWriter(filename string, props []kvProperty, enabled bool) (*Fi
 		case "maxsize":
 			maxsize = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1024)
 		case "maxdays":
-			maxdays = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 0)
+			maxdays = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1)
 		case "daily":
 			daily = strings.Trim(prop.Value, " \r\n") != "false"
 		case "rotate":
 			rotate = strings.Trim(prop.Value, " \r\n") != "false"
 		case "maxBackup":
-			maxbackup = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 999)
+			maxbackup = strToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1)
 		default:
 			fmt.Fprintf(os.Stderr, "LoadConfig: Warning: Unknown property \"%s\" for file filter in %s\n", prop.Name, filename)
 		}
