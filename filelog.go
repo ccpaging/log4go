@@ -5,264 +5,449 @@ package log4go
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"time"
+	"bufio"
+	"io"
+	"sync"
 )
 
 var (
-	// Default log file and directory perm
-	DefaultFilePerm = os.FileMode(0660)
+	// Default rotate cycle in seconds
+	DefaultRotCycle int64 = 86400
+
+	// Default rotate delay since midnight in seconds
+	DefaultRotDelay0 int64 = 0
+
+	// Default rotate max size
+	DefaultRotSize int64 = 1024 * 1024 * 10
 
 	// Default flush size of cache writing file
  	DefaultFileFlush = 4096
+
+	// Default log file and directory perm
+	DefaultFilePerm = os.FileMode(0660)
 )
+
+var DEBUG_ROTATE bool = false
 
 // This log writer sends output to a file
 type FileLogWriter struct {
 	// The opened file
 	filename string
-	file     *os.File
+	file   *os.File
 
 	// The logging format
 	format string
 
-	// File header/trailer
-	header, trailer string
+	// File header/footer
+	header, footer string
 
-	// Rotate at linecount
-	maxlines          int
-	maxlines_curlines int
+	// 2nd cache, formatted message
+	messages chan string
 
-	// Rotate at size
-	maxsize         int
-	maxsize_cursize int
+	// 3nd cache, bufio
+	sync.RWMutex
+	flush  int
+	bufWriter *bufio.Writer
+	writer io.Writer
 
-	// Max days for log file storage
-	maxdays int
+	rotate  int	   // Keep old logfiles (.001, .002, etc)
+	maxsize int64  // Rotate at size
+	cycle, delay0 int64  // Rotate cycle in seconds
 
-	// Rotate daily
-	daily          bool
-	daily_opendate time.Time
-
-	// Keep old logfiles (.001, .002, etc)
-	rotate bool
-	maxbackup int
+	// write loop closed
+	isRunLoop bool
+	closedLoop chan struct{}
+	resetLoop chan time.Time
 }
 
 func (w *FileLogWriter) Close() {
+	close(w.messages)
+
+	// wait for write Loop return
+	if w.isRunLoop {  // Write loop may not running if no message write
+		w.isRunLoop = false
+		<- w.closedLoop
+	}
+}
+
+func (w *FileLogWriter) fileOpen(flag int) *os.File {
+	fd, err := os.OpenFile(w.filename, flag, DefaultFilePerm)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FileLogWriter(%q): %s\n", w.filename, err)
+		return nil
+	}
+
+	w.file = fd
+	w.writer = w.file
+
+	if w.flush > 0 {
+		w.bufWriter = bufio.NewWriterSize(w.file, w.flush)
+		w.writer = w.bufWriter
+	}
+	return fd
+}
+
+func (w *FileLogWriter) fileClose() {
 	if w.file == nil {
 		return
 	}
-	fmt.Fprint(w.file, FormatLogRecord(w.trailer, &LogRecord{Created: time.Now()}))
-	w.file.Sync()
+
+	if w.bufWriter != nil {
+		w.bufWriter.Flush()
+	} else {
+		w.file.Sync()
+	}
 	w.file.Close()
+
+	w.file = nil
+	w.writer = nil
+	w.bufWriter = nil
 }
 
 // NewFileLogWriter creates a new LogWriter which writes to the given file and
-// has rotation enabled if rotate is true.
+// has rotation enabled if rotate > 0.
 //
-// If rotate is true, any time a new log file is opened, the old one is renamed
-// with a .### extension to preserve it.  The various Set* methods can be used
-// to configure log rotation based on lines, size, and daily.
+// If rotate > 0, rotate a new log file is opened, the old one is renamed
+// with a .### extension to preserve it.  
+// 
+// The chainable Set* methods can be used to configure log rotation 
+// based on cycle and size. Or by change Default* variables.
 //
 // The standard log-line format is:
 //   [%D %T] [%L] (%S) %M
-func NewFileLogWriter(fname string, rotate bool) *FileLogWriter {
+func NewFileLogWriter(fname string, rotate int) *FileLogWriter {
+    err := os.MkdirAll(path.Dir(fname), DefaultFilePerm)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FileLogWriter(%s): %s\n", fname, err)
+		return nil
+	}
 	w := &FileLogWriter{
 		filename: fname,
 		format:   FORMAT_DEFAULT,
+
+		messages: make(chan string,  DefaultBufferLength),
+
+		flush:	  DefaultFileFlush,
+		bufWriter: nil,
+
 		rotate:   rotate,
-		maxbackup: 999,
+		cycle:	  DefaultRotCycle,
+		delay0:	  DefaultRotDelay0,
+		maxsize:  DefaultRotSize,
+
+		isRunLoop: false,
+		closedLoop: make(chan struct{}),
+		resetLoop: make(chan time.Time, 5),
 	}
 
-	// open the file for the first time
-	if err := w.intRotate(); err != nil {
-		fmt.Fprintf(os.Stderr, "FileLogWriter(%s): %s\n", w.filename, err)
-		return nil
-	}
+	w.resetLoop <- time.Now()
 	return w
 }
 
-func (w *FileLogWriter) LogWrite(rec *LogRecord) {
-	now := time.Now()
+// Get first rotate time
+func (w *FileLogWriter) nextRotateTime() time.Time {
+	nrt := time.Now()
+	if w.delay0 < 0 {
+		// Now + cycle
+		nrt = nrt.Add(time.Duration(w.cycle) * time.Second)
+	} else {
+		// Tomorrow midnight (Clock 0) + delay0
+		tomorrow := nrt.Add(24 * time.Hour)
+		nrt = time.Date(tomorrow.Year(), tomorrow.Month(), tomorrow.Day(), 
+						0, 0, 0, 0, tomorrow.Location())
+		nrt = nrt.Add(time.Duration(w.delay0) * time.Second)
+	}
+	return nrt
+}
 
-	if (w.maxlines > 0 && w.maxlines_curlines >= w.maxlines) ||
-		(w.maxsize > 0 && w.maxsize_cursize >= w.maxsize) ||
-		(w.daily && now.Day() != w.daily_opendate.Day()) {
-		// open the file for the first time
-		if err := w.intRotate(); err != nil {
-			fmt.Fprintf(os.Stderr, "FileLogWriter(%q): %s\n", w.filename, err)
-			return
+func (w *FileLogWriter) writeLoop() {
+	defer func() {
+		w.isRunLoop = false
+		close(w.closedLoop)
+	}()
+
+	if DEBUG_ROTATE { fmt.Println("Set cycle, delay0:", w.cycle, w.delay0) }
+
+	var old_cycle int64 = -1; var old_delay0 int64 = -1
+
+	nrt := w.nextRotateTime()
+	timer := time.NewTimer(nrt.Sub(time.Now()))
+	for {
+		select {
+		case msg, ok := <-w.messages:
+			if msg != "" {
+				w.writeMessage(msg)
+			}
+			if w.bufWriter != nil && len(w.messages) <= 0 {
+				w.bufWriter.Flush()
+			}
+			if !ok { // drain the log channel and write directly
+				for msg := range w.messages {
+					w.writeMessage(msg)
+				}
+				goto CLOSE
+			}
+		case <-timer.C:
+			if DEBUG_ROTATE { fmt.Println("Get cycle, delay0:", w.cycle, w.delay0) }
+
+			nrt = nrt.Add(time.Duration(w.cycle) * time.Second)
+			timer.Reset(nrt.Sub(time.Now()))
+			w.intRotate()
+		case <-w.resetLoop:
+			if old_cycle == w.cycle && old_delay0 == w.delay0 {
+				continue
+			}
+			// Make sure cycle > 0
+			if w.cycle < 2 {
+				w.cycle = 86400
+			}
+			old_cycle = w.cycle; old_delay0 = w.delay0
+
+			if DEBUG_ROTATE { fmt.Println("Reset cycle, delay0:", w.cycle, w.delay0) }
+
+			nrt = w.nextRotateTime()
+			timer.Reset(nrt.Sub(time.Now()))
 		}
 	}
 
+CLOSE:
+	w.Lock()
+	w.fileClose()
+	w.Unlock()
+}
+
+func (w *FileLogWriter) writeMessage(msg string) {
+	w.Lock()
+	defer w.Unlock()
+
+	// Open file when write first message
 	if w.file == nil {
-		return
+		isNewFile := true
+		if fi, err := os.Lstat(w.filename); err == nil && fi.Size() > 0 {
+			isNewFile = false 
+		}
+		fd := w.fileOpen(os.O_WRONLY|os.O_APPEND|os.O_CREATE)
+		if fd == nil {
+			return
+		}
+		if isNewFile { // write header
+			fmt.Fprint(w.writer, FormatLogRecord(w.header, &LogRecord{Created: time.Now()}))
+		}
 	}
 
 	// Perform the write
-	n, err := fmt.Fprint(w.file, FormatLogRecord(w.format, rec))
+	_, err := fmt.Fprint(w.writer, msg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FileLogWriter(%q): %s\n", w.filename, err)
 		return
 	}
-
-	// Update the counts
-	w.maxlines_curlines++
-	w.maxsize_cursize += n
 }
 
-// If this is called in a threaded context, it MUST be synchronized
-func (w *FileLogWriter) intRotate() error {
-	// Close any log file that may be open
-	if w.file != nil {
-		fmt.Fprint(w.file, FormatLogRecord(w.trailer, &LogRecord{Created: time.Now()}))
-		w.file.Close()
+func (w *FileLogWriter) LogWrite(rec *LogRecord) {
+	if !w.isRunLoop {
+		w.isRunLoop = true
+		go w.writeLoop()
+	}
+	w.messages <- FormatLogRecord(w.format, rec)
+}
+
+func (w *FileLogWriter) intRotate() {
+	w.Lock()
+	defer w.Unlock()
+
+	w.fileClose() 
+
+	fi, err := os.Lstat(w.filename)
+	if err != nil { // File not exist. Create new.
+		return
 	}
 
-	// fmt.Fprintf(os.Stderr, "FileLogWriter: %v\n", w)
-	now := time.Now()
-	if w.rotate {
-		_, err := os.Lstat(w.filename)
-		if err == nil {
-			// We are keeping log files, move it to the next available number
-			todate := now.Format("2006-01-02")
-			if w.daily && now.Day() != w.daily_opendate.Day() {
-				// rename as opendate
-				todate = w.daily_opendate.Format("2006-01-02")
+	if fi.Size() < w.maxsize { // File exist and size normal
+		return
+	}
+
+	// File existed. File size > maxsize
+	if w.rotate <= 0 {
+		os.Remove(w.filename)
+		return
+	}
+
+	// Append footer
+	fd, _ := os.OpenFile(w.filename, os.O_WRONLY|os.O_APPEND, DefaultFilePerm)
+	if fd != nil {
+		fmt.Fprint(fd, FormatLogRecord(w.footer, &LogRecord{Created: time.Now()}))
+		fd.Sync()
+		fd.Close()
+	}
+
+	// File existed. File size > maxsize. Rotate
+	newLog := w.filename + time.Now().Format(".20060102-150405")
+	err = os.Rename(w.filename, newLog)
+	
+	if DEBUG_ROTATE { fmt.Println(w.filename, "Rename", newLog, err) }
+	
+	// May compress new log file here
+
+	go func() {
+		ext := path.Ext(w.filename) // like ".log"
+		base := strings.TrimSuffix(w.filename, ext) // include dir
+		
+		if DEBUG_ROTATE { fmt.Println(w.rotate, base, ext) }
+	
+		// May create old directory here
+	
+		var n int
+		var err error = nil 
+		slot := ""
+		for n = 1; n <= w.rotate; n++ {
+			slot = base + fmt.Sprintf(".%03d", n) + ext
+			_, err = os.Lstat(slot)
+			if err != nil {
+				break
 			}
-
-			renameto := ""
-			for num := 1; err == nil && num <= w.maxbackup; num++ {
-				renameto = w.filename + fmt.Sprintf(".%s.%03d", todate, num)
-				_, err = os.Lstat(renameto)
-			}
-
-			if err != nil {	// Rename the file to its new
-				os.Rename(w.filename, renameto)
-				// Continue even failed
-			} // else no free log file name to rotate
-
 		}
-	}
+	
+		if DEBUG_ROTATE { fmt.Println(slot) }
 
-	if w.maxdays > 0 {
-		go w.deleteOldLog()
-	}
+		if err == nil { // Full
+			fmt.Println("Remove:", slot)
+			os.Remove(slot)
+			n--
+		}
+	
+		for ; n > 1; n-- {
+			prev := base + fmt.Sprintf(".%03d", n - 1) + ext
 
-	if fstatus, err := os.Lstat(w.filename); err == nil {
-		// Set the daily open date to file last modify
-		w.daily_opendate = fstatus.ModTime()
-		// initialize rotation values
-		w.maxsize_cursize = int(fstatus.Size())
-		// fmt.Fprintf(os.Stderr, "FileLogWriter(%q): set cursize %d\n", w.filename, w.maxsize_cursize)
-		// fmt.Fprintf(os.Stderr, "FileLogWriter(%q): set open date %v\n", w.filename, w.daily_opendate)
-	} else {
-		// Set the daily open date to the current date
-		w.daily_opendate = now
-		w.maxsize_cursize = 0
-	}
-	// initialize other rotation values
-	w.maxlines_curlines = 0
+			if DEBUG_ROTATE { fmt.Println(prev, "Rename", slot) }
 
-	// Open the log file
-	fd, err := os.OpenFile(w.filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0660)
-	if err != nil {
-		w.file = nil
-		return err
-	}
-	w.file = fd
+			os.Rename(prev, slot)
+			slot = prev
+		}
+		
+		if DEBUG_ROTATE { fmt.Println(newLog, "Rename", base + ".001" + ext) }
 
-	fmt.Fprint(w.file, FormatLogRecord(w.header, &LogRecord{Created: now}))
+		os.Rename(newLog, base + ".001" + ext)
+	}()
+}
+
+// Set option. chainable
+func (w *FileLogWriter) Set(name string, v interface{}) *FileLogWriter {
+	w.SetOption(name, v)
+	return w
+}
+
+// Set option. checkable. Must be set before the first log message is written.
+func (w *FileLogWriter) SetOption(name string, v interface{}) error {
+	var ok bool
+	switch name {
+	case "format":
+		if w.format, ok = v.(string); !ok {
+			return ErrBadValue
+		}
+	case "flush":
+		switch value := v.(type) {
+		case int:
+			w.flush = value
+		case string:
+			w.flush = StrToNumSuffix(strings.Trim(value, " \r\n"), 1024)
+		default:
+			return ErrBadValue
+		}
+		w.Lock()
+		w.fileClose()
+		w.Unlock()
+	case "rotate":
+		switch value := v.(type) {
+		case int:
+			w.rotate = value
+		case string:
+			w.rotate = StrToNumSuffix(strings.Trim(value, " \r\n"), 1)
+		default:
+			return ErrBadValue
+		}
+	case "cycle":
+		switch value := v.(type) {
+		case int:
+			w.cycle = int64(value)
+		case int64:
+			w.cycle = value
+		case string:
+			dur, _ := time.ParseDuration(value)
+			w.cycle = int64(dur/time.Millisecond)
+		default:
+			return ErrBadValue
+		}
+		// Make sure cycle > 0
+		if w.cycle < 2 {
+			w.cycle = 86400
+		}
+		if w.isRunLoop {
+			w.resetLoop <- time.Now()
+		}
+	case "delay0":
+		switch value := v.(type) {
+		case int:
+			w.delay0 = int64(value)
+		case int64:
+			w.delay0 = value
+		case string:
+			dur, _ := time.ParseDuration(value)
+			w.delay0 = int64(dur/time.Millisecond)
+		default:
+			return ErrBadValue
+		}
+		if w.isRunLoop {
+			w.resetLoop <- time.Now()
+		}
+	case "maxsize":
+		switch value := v.(type) {
+		case int:
+			w.maxsize = int64(value)
+		case int64:
+			w.maxsize = value
+		case string:
+			w.maxsize = int64(StrToNumSuffix(strings.Trim(value, " \r\n"), 1024))
+		default:
+			return ErrBadValue
+		}
+	case "head":
+		if w.header, ok = v.(string); !ok {
+			return ErrBadValue
+		}
+	case "foot":
+		if w.footer, ok = v.(string); !ok {
+			return ErrBadValue
+		}
+	default:
+		return ErrBadOption
+	}
 	return nil
 }
 
-// Delete old log files which were expired.
-func (w *FileLogWriter) deleteOldLog() {
-	if w.maxdays <= 0 {
-		return
+func (w *FileLogWriter) GetOption(name string) (interface{}, error) {
+	switch name {
+	case "format":
+		return w.format, nil
+	case "filename":
+		return w.filename, nil
+	case "flush":
+		return w.flush, nil
+	case "cycle":
+		return w.cycle, nil
+	case "delay0":
+		return w.delay0, nil
+	case "rotate":
+		return w.rotate, nil
+	case "maxsize":
+		return w.maxsize, nil
+	case "head":
+		return w.header, nil
+	case "foot":
+		return w.footer, nil
+	default:
+		return nil, ErrBadOption
 	}
-	dir := filepath.Dir(w.filename)
-	base := filepath.Base(w.filename)
-	modtime := time.Now().Unix() - int64(60*60*24*w.maxdays)
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) (returnErr error) {
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Fprintf(os.Stderr, "FileLogWriter: Unable to remove old log '%s', error: %+v\n", path, err)
-			}
-		}()
-
-		if !info.IsDir() && info.ModTime().Unix() < modtime {
-			if strings.HasPrefix(filepath.Base(path), base) {
-				os.Remove(path)
-			}
-		}
-		return
-	})
-}
-
-// Set the logging format (chainable).  Must be called before the first log
-// message is written.
-func (w *FileLogWriter) SetFormat(format string) *FileLogWriter {
-	w.format = format
-	return w
-}
-
-// Set the logfile header and footer (chainable).  Must be called before the first log
-// message is written.  These are formatted similar to the FormatLogRecord (e.g.
-// you can use %D and %T in your header/footer for date and time).
-func (w *FileLogWriter) SetHeadFoot(head, foot string) *FileLogWriter {
-	w.header, w.trailer = head, foot
-	if w.maxlines_curlines == 0 {
-		fmt.Fprint(w.file, FormatLogRecord(w.header, &LogRecord{Created: time.Now()}))
-	}
-	return w
-}
-
-// Set rotate at linecount (chainable). Must be called before the first log
-// message is written.
-func (w *FileLogWriter) SetRotateLines(maxlines int) *FileLogWriter {
-	//fmt.Fprintf(os.Stderr, "FileLogWriter.SetRotateLines: %v\n", maxlines)
-	w.maxlines = maxlines
-	return w
-}
-
-// Set rotate at size (chainable). Must be called before the first log message
-// is written.
-func (w *FileLogWriter) SetRotateSize(maxsize int) *FileLogWriter {
-	//fmt.Fprintf(os.Stderr, "FileLogWriter.SetRotateSize: %v\n", maxsize)
-	w.maxsize = maxsize
-	return w
-}
-
-// Set max expire days.
-func (w *FileLogWriter) SetRotateDays(maxdays int) *FileLogWriter {
-	w.maxdays = maxdays
-	return w
-}
-
-// Set rotate daily (chainable). Must be called before the first log message is
-// written.
-func (w *FileLogWriter) SetRotateDaily(daily bool) *FileLogWriter {
-	//fmt.Fprintf(os.Stderr, "FileLogWriter.SetRotateDaily: %v\n", daily)
-	w.daily = daily
-	return w
-}
-
-// SetRotate changes whether or not the old logs are kept. (chainable) Must be
-// called before the first log message is written.  If rotate is false, the
-// files are overwritten; otherwise, they are rotated to another file before the
-// new log is opened.
-func (w *FileLogWriter) SetRotate(rotate bool) *FileLogWriter {
-	//fmt.Fprintf(os.Stderr, "FileLogWriter.SetRotate: %v\n", rotate)
-	w.rotate = rotate
-	return w
-}
-
-// Set max backup files. Must be called before the first log message
-// is written.
-func (w *FileLogWriter) SetRotateBackup(maxbackup int) *FileLogWriter {
-	w.maxbackup = maxbackup
-	return w
 }

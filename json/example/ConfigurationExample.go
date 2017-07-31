@@ -5,11 +5,17 @@ import (
 	"os"
 	"fmt"
 	l4g "github.com/ccpaging/log4go"
+	"github.com/ccpaging/log4go/json"
 )
 
 var filename string = "logconfig.json"
 
 func main() {
+	l4g.Close()
+
+	// Load the configuration (isn't this easy?)
+	log := l4g.GetGlobalLogger()
+
 	fd, err := os.Open(filename)
 	if err != nil {
 		panic(fmt.Sprintf("Can't load json config file: %s %v", filename, err))
@@ -26,7 +32,7 @@ func main() {
 		panic(fmt.Sprintf("Can't parse json config file: %s %v", filename, err))
 	}
 	
-	l4g.LoadConfigBuf(c.LogConfig)
+	jsonlog.LoadConfigBuf(log, c.LogConfig)
 
 	//l4g.LoadConfiguration(filename)
 

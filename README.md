@@ -1,5 +1,7 @@
 # log4go
 
+In Production Environment, please consider release Version 5 in the near future. ):
+
 Forked from http://log4go.googlecode.com/
 
 * Sync write, Structured, Extendable
@@ -36,6 +38,8 @@ import (
 )
 
 func main() {
+    defer log.Close()
+
     log.Debug("This is Debug")
     log.Info("This is Info")
 
@@ -53,3 +57,4 @@ Acknowledgements:
 3. <https://github.com/siddontang/go/tree/master/log>
 4. <https://github.com/sirupsen/logrus>
 5. <https://github.com/YoungPioneers/blog4go>
+6. <https://github.com/cihub/seelog>

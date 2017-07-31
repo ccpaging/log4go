@@ -1,9 +1,14 @@
 package main
 
 import (
+	"path/filepath"
+	"fmt"
+	"os"
 	l4g "github.com/ccpaging/log4go"
-	"github.com/ccpaging/log4go/xmlog"
+	"github.com/ccpaging/log4go/xml"
 )
+
+var oldfiles string = "_*.*"
 
 func main() {
 	l4g.Close()
@@ -19,5 +24,12 @@ func main() {
 	l4g.Info("About that time, eh chaps?")
 
 	l4g.Close()
+
+	files, _ := filepath.Glob(oldfiles)
+	fmt.Printf("%d files match %s\n", len(files), oldfiles) // contains a list of all files in the current directory
+	for _, f := range files {
+		fmt.Printf("Remove %s\n", f)
+		os.Remove(f)
+	}
 }
 

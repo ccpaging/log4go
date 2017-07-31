@@ -20,7 +20,7 @@ type ColorLogWriter struct {
 }
 
 // This creates a new ConsoleLogWriter
-func NewColorLogWriter() *ColorLogWriter {
+func NewLogWriter() *ColorLogWriter {
 	c := &ColorLogWriter{
 		iow:	stdout,
 		format: "[%T %D %Z] [%L] (%S) %M",

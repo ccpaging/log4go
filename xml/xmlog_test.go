@@ -30,7 +30,7 @@ func TestXMLogWriter(t *testing.T) {
 	}(l4g.DefaultBufferLength)
 	l4g.DefaultBufferLength = 0
 
-	w := NewXMLogWriter(testLogFile, false)
+	w := NewLogWriter(testLogFile, 0)
 	if w == nil {
 		t.Fatalf("Invalid return: w should not be nil")
 	}
@@ -42,8 +42,8 @@ func TestXMLogWriter(t *testing.T) {
 
 	if contents, err := ioutil.ReadFile(testLogFile); err != nil {
 		t.Errorf("read(%q): %s", testLogFile, err)
-	} else if len(contents) != 177 {
-		t.Errorf("malformed xmlog: %q (%d bytes)", string(contents), len(contents))
+	} else if len(contents) != 170 {
+		t.Errorf("malformed xml log: %q (%d bytes)", string(contents), len(contents))
 	}
 }
 
@@ -78,23 +78,29 @@ func TestXMLConfig(t *testing.T) {
 			%d - Date (01/02/06)
 			%L - Level (FNST, FINE, DEBG, TRAC, WARN, EROR, CRIT)
 			%S - Source
+			%s - Short Source
+			%x - Extra Short Source: just file without .go suffix
 			%M - Message
 			It ignores unknown format strings (and removes them)
 			Recommended: "[%D %T] [%L] (%S) %M"
 		-->
 		<property name="format">[%D %T] [%L] (%S) %M</property>
-		<property name="rotate">0</property> <!-- > 0, enables log rotation, otherwise append -->
+		<property name="flush">0</property> <!-- no bufio write -->
+		<property name="rotate">0</property> <!-- enables log rotation. 0, append -->
 		<property name="maxsize">0M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
-		<property name="daily">true</property> <!-- Automatically rotates when a log message is written after midnight -->
+		<property name="cycle">24h</property> <!-- rotate cycle -->
+		<property name="delay0">0h</property> <!-- rotate clock since midnight -->
 	</filter>
 	<filter enabled="true">
-		<tag>xmlog</tag>
+		<tag>xml</tag>
 		<type>xml</type>
 		<level>TRACE</level>
 		<property name="filename">_trace.xml</property>
-		<property name="rotate">true</property> <!-- true enables log rotation, otherwise append -->
-		<property name="maxsize">100M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
-		<property name="daily">false</property> <!-- Automatically rotates when a log message is written after midnight -->
+		<property name="flush">4k</property> <!-- bufio flush size -->
+		<property name="rotate">10</property> <!-- enables log rotation. 0, append -->
+		<property name="maxsize">10M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
+		<property name="cycle">24h</property> <!-- rotate cycle -->
+		<property name="delay0">0h</property> <!-- rotate clock since midnight -->
 	</filter>
 	<filter enabled="false"><!-- enabled=false means this logger won't actually be created -->
 		<tag>donotopen</tag>
@@ -102,6 +108,7 @@ func TestXMLConfig(t *testing.T) {
 		<level>FINEST</level>
 		<property name="endpoint">192.168.1.255:12124</property> <!-- recommend UDP broadcast -->
 		<property name="protocol">udp</property> <!-- tcp or udp -->
+		<property name="format">[%D %T] [%L] (%S) %M</property>
 	</filter>
 </logging>`)
 	fd.Close()
@@ -124,8 +131,8 @@ func TestXMLConfig(t *testing.T) {
 	if _, ok := log["file"]; !ok {
 		t.Fatalf("XMLConfig: Expected file logger")
 	}
-	if _, ok := log["xmlog"]; !ok {
-		t.Fatalf("XMLConfig: Expected xmlog logger")
+	if _, ok := log["xml"]; !ok {
+		t.Fatalf("XMLConfig: Expected xml logger")
 	}
 
 	// Make sure they're the right type
@@ -135,8 +142,8 @@ func TestXMLConfig(t *testing.T) {
 	if _, ok := log["file"].LogWriter.(*l4g.FileLogWriter); !ok {
 		t.Fatalf("XMLConfig: Expected file to be *FileLogWriter, found %T", log["file"].LogWriter)
 	}
-	if _, ok := log["xmlog"].LogWriter.(*l4g.FileLogWriter); !ok {
-		t.Fatalf("XMLConfig: Expected xmlog to be *FileLogWriter, found %T", log["xmlog"].LogWriter)
+	if _, ok := log["xml"].LogWriter.(*l4g.FileLogWriter); !ok {
+		t.Fatalf("XMLConfig: Expected xml log to be *FileLogWriter, found %T", log["xml"].LogWriter)
 	}
 
 	// Make sure levels are set
@@ -146,20 +153,21 @@ func TestXMLConfig(t *testing.T) {
 	if lvl := log["file"].Level; lvl != l4g.FINEST {
 		t.Errorf("XMLConfig: Expected file to be set to level %d, found %d", l4g.FINEST, lvl)
 	}
-	if lvl := log["xmlog"].Level; lvl != l4g.TRACE {
-		t.Errorf("XMLConfig: Expected xmlog to be set to level %d, found %d", l4g.TRACE, lvl)
+	if lvl := log["xml"].Level; lvl != l4g.TRACE {
+		t.Errorf("XMLConfig: Expected xml log to be set to level %d, found %d", l4g.TRACE, lvl)
 	}
 
-	/* Fix me. (cannot refer to unexported field or method file)
 	// Make sure the w is open and points to the right file
-	if fname := log["file"].LogWriter.(*l4g.FileLogWriter).file.Name(); fname != "_test.log" {
+	flw := log["file"].LogWriter.(*l4g.FileLogWriter)
+	if fname, _ := flw.GetOption("filename"); fname != "_test.log" {
 		t.Errorf("XMLConfig: Expected file to have opened %s, found %s", "test.log", fname)
 	}
-	// Make sure the XLW is open and points to the right file
-	if fname := log["xmlog"].LogWriter.(*l4g.FileLogWriter).file.Name(); fname != "_trace.xml" {
-		t.Errorf("XMLConfig: Expected xmlog to have opened %s, found %s", "trace.xml", fname)
+
+	xlw := log["xml"].LogWriter.(*l4g.FileLogWriter)
+	if fname, _ := xlw.GetOption("filename"); fname != "_trace.xml" {
+		t.Errorf("XMLConfig: Expected file to have opened %s, found %s", "_trace.xml", fname)
 	}
-	*/
+
 	// Save XML log file
 	err = os.Rename(configfile, "example/config.xml") // Keep this so that an example with the documentation is available
 	if err != nil {

@@ -18,23 +18,29 @@
 			%d - Date (01/02/06)
 			%L - Level (FNST, FINE, DEBG, TRAC, WARN, EROR, CRIT)
 			%S - Source
+			%s - Short Source
+			%x - Extra Short Source: just file without .go suffix
 			%M - Message
 			It ignores unknown format strings (and removes them)
 			Recommended: "[%D %T] [%L] (%S) %M"
 		-->
 		<property name="format">[%D %T] [%L] (%S) %M</property>
-		<property name="rotate">0</property> <!-- > 0, enables log rotation, otherwise append -->
+		<property name="flush">0</property> <!-- no bufio write -->
+		<property name="rotate">0</property> <!-- enables log rotation. 0, append -->
 		<property name="maxsize">0M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
-		<property name="daily">true</property> <!-- Automatically rotates when a log message is written after midnight -->
+		<property name="cycle">24h</property> <!-- rotate cycle -->
+		<property name="delay0">0h</property> <!-- rotate clock since midnight -->
 	</filter>
 	<filter enabled="true">
-		<tag>xmlog</tag>
+		<tag>xml</tag>
 		<type>xml</type>
 		<level>TRACE</level>
 		<property name="filename">_trace.xml</property>
-		<property name="rotate">true</property> <!-- true enables log rotation, otherwise append -->
-		<property name="maxsize">100M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
-		<property name="daily">false</property> <!-- Automatically rotates when a log message is written after midnight -->
+		<property name="flush">4k</property> <!-- bufio flush size -->
+		<property name="rotate">10</property> <!-- enables log rotation. 0, append -->
+		<property name="maxsize">10M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
+		<property name="cycle">24h</property> <!-- rotate cycle -->
+		<property name="delay0">0h</property> <!-- rotate clock since midnight -->
 	</filter>
 	<filter enabled="false"><!-- enabled=false means this logger won't actually be created -->
 		<tag>donotopen</tag>
@@ -42,5 +48,6 @@
 		<level>FINEST</level>
 		<property name="endpoint">192.168.1.255:12124</property> <!-- recommend UDP broadcast -->
 		<property name="protocol">udp</property> <!-- tcp or udp -->
+		<property name="format">[%D %T] [%L] (%S) %M</property>
 	</filter>
 </logging>

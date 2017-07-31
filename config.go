@@ -4,12 +4,16 @@ package log4go
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
-	"time"
 	"strings"
-	"encoding/json"
+	"errors"
+)
+
+// Various error codes.
+var (
+	ErrBadOption   = errors.New("invalid or unsupported option")
+	ErrBadValue    = errors.New("invalid option value")
 )
 
 type FilterProp struct {
@@ -27,66 +31,6 @@ type FilterConfig struct {
 
 type LogConfig struct {
 	Filters []FilterConfig `xml:"filter"`
-}
-
-func (log Logger) LoadConfiguration(filename string) {
-	if len(filename) <= 0 {
-		return
-	}
-
-	// Open the LogConfiguration file
-	fd, err := os.Open(filename)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not open %q for reading. %s\n", filename, err)
-		os.Exit(1)
-	}
-	defer fd.Close()
-
-	buf, err := ioutil.ReadAll(fd)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not read %q. %s\n", filename, err)
-		os.Exit(1)
-	}
-
-	log.LoadConfigBuf(buf)
-	return
-}
-
-func (log Logger) LoadConfigBuf(contents []byte) {
-	jc := new(LogConfig)
-	if err := json.Unmarshal(contents, jc); err != nil {
-		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not parse Json LogConfiguration. %s\n", err)
-		os.Exit(1)
-	}
-
-	log.Close()
-	for _, fc := range jc.Filters {
-		bad, enabled, lvl := log.CheckFilterConfig(fc)
-
-		// Just so all of the required attributes are errored at the same time if missing
-		if bad {
-			os.Exit(1)
-		}
-
-		lw, good := log.MakeLogWriter(fc, enabled)
-
-		// Just so all of the required params are errored at the same time if wrong
-		if !good {
-			os.Exit(1)
-		}
-
-		// If we're disabled (syntax and correctness checks only), don't add to logger
-		if !enabled {
-			continue
-		}
-
-		if lw == nil {
-			fmt.Fprintf(os.Stderr, "LoadConfiguration: LogWriter is nil. %v\n", fc)
-			os.Exit(1)
-		}
-
-		log.AddFilter(fc.Tag, lvl, lw)
-	}
 }
 
 func (log Logger) CheckFilterConfig(fc FilterConfig) (bad bool, enabled bool, lvl Level) {
@@ -156,14 +100,12 @@ func (log Logger) MakeLogWriter(fc FilterConfig, enabled bool) (LogWriter, bool)
 }
 
 func propToConsoleLogWriter(props []FilterProp, enabled bool) (*ConsoleLogWriter, bool) {
-	format := "[%D %T] [%L] (%S) %M"
+	clw := NewConsoleLogWriter()
 	// Parse properties
 	for _, prop := range props {
-		switch prop.Name {
-		case "format":
-			format = strings.Trim(prop.Value, " \r\n")
-		default:
-			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for console filter\n", prop.Name)
+		err := clw.SetOption(prop.Name, strings.Trim(prop.Value, " \r\n"))
+		if err != nil { 
+			fmt.Fprintf(os.Stderr, "Console filter Warning: \"%s\", %v\n", prop.Name, err)
 		}
 	}
 
@@ -172,18 +114,7 @@ func propToConsoleLogWriter(props []FilterProp, enabled bool) (*ConsoleLogWriter
 		return nil, true
 	}
 
-	clw := NewConsoleLogWriter()
-	clw.SetFormat(format)
 	return clw, true
-}
-
-// Parse a duration string.
-// A duration string is a possibly signed sequence of decimal numbers,
-// each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m".
-// Valid time units are "ns", "us", "ms", "s", "m", "h".
-func StrToTimeDuration(str string) int64 {
-	dur, _ := time.ParseDuration(str)
-	return int64(dur/time.Millisecond)
 }
 
 // Parse a number with K/M/G suffixes based on thousands (1000) or 2^10 (1024)
@@ -206,42 +137,43 @@ func StrToNumSuffix(str string, mult int) int {
 	return parsed * num
 }
 
+// cycle, delay0, time.Duration. Parse a duration string.
+// A duration string is a possibly signed sequence of decimal numbers,
+// each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m".
+// Valid time units are "ns", "us", "ms", "s", "m", "h".
 func (log Logger) PropToFileLogWriter(props []FilterProp, enabled bool) (*FileLogWriter, bool) {
-	file := ""
+	filename := ""
+	rotate := 0
+	cycle := "24h"
+	delay0 := "0h"
 	format := "[%D %T] [%L] (%S) %M"
-	maxlines := 0
-	maxsize := 0
-	daily := false
-	rotate := false
-	maxbackup := 999
-	maxdays := 0
+	flush := 0
+	maxsize := "10M"
 
 	// Parse properties
 	for _, prop := range props {
 		switch prop.Name {
 		case "filename":
-			file = strings.Trim(prop.Value, " \r\n")
+			filename = strings.Trim(prop.Value, " \r\n")
+		case "rotate":
+			rotate = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1)
+		case "cycle":
+			maxsize = strings.Trim(prop.Value, " \r\n")
+		case "delay0":
+			delay0 = strings.Trim(prop.Value, " \r\n")
 		case "format":
 			format = strings.Trim(prop.Value, " \r\n")
-		case "maxlines":
-			maxlines = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1000)
+		case "flush":
+			flush = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1024)
 		case "maxsize":
-			maxsize = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1024)
-		case "maxdays":
-			maxdays = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 0)
-		case "daily":
-			daily = strings.Trim(prop.Value, " \r\n") != "false"
-		case "rotate":
-			rotate = strings.Trim(prop.Value, " \r\n") != "false"
-		case "maxBackup":
-			maxbackup = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 999)
+			maxsize = strings.Trim(prop.Value, " \r\n")
 		default:
 			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for file filter\n", prop.Name)
 		}
 	}
 
 	// Check properties
-	if len(file) == 0 {
+	if len(filename) == 0 {
 		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required property \"%s\" for file filter missing\n", "filename")
 		return nil, false
 	}
@@ -251,22 +183,20 @@ func (log Logger) PropToFileLogWriter(props []FilterProp, enabled bool) (*FileLo
 		return nil, true
 	}
 
-	flw := NewFileLogWriter(file, rotate)
+	flw := NewFileLogWriter(filename, rotate).Set("cycle", cycle).Set("delay0", delay0)
 	if flw == nil {
 		return nil, false
 	}
-	flw.SetFormat(format)
-	flw.SetRotateLines(maxlines)
-	flw.SetRotateSize(maxsize)
-	flw.SetRotateDays(maxdays)
-	flw.SetRotateDaily(daily)
-	flw.SetRotateBackup(maxbackup)
+	flw.SetOption("format", format)
+	flw.SetOption("flush", flush)
+	flw.SetOption("maxsize", maxsize)
 	return flw, true
 }
 
 func propToSocketLogWriter(props []FilterProp, enabled bool) (*SocketLogWriter, bool) {
 	endpoint := ""
 	protocol := "udp"
+	format := "[%D %T] [%L] (%S) %M"
 
 	// Parse properties
 	for _, prop := range props {
@@ -275,6 +205,8 @@ func propToSocketLogWriter(props []FilterProp, enabled bool) (*SocketLogWriter, 
 			endpoint = strings.Trim(prop.Value, " \r\n")
 		case "protocol":
 			protocol = strings.Trim(prop.Value, " \r\n")
+		case "format":
+			format = strings.Trim(prop.Value, " \r\n")
 		default:
 			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for file filter\n", prop.Name)
 		}
@@ -291,5 +223,5 @@ func propToSocketLogWriter(props []FilterProp, enabled bool) (*SocketLogWriter, 
 		return nil, true
 	}
 
-	return NewSocketLogWriter(protocol, endpoint), true
+	return NewSocketLogWriter(protocol, endpoint).Set("format", format), true
 }

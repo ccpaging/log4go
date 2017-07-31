@@ -58,13 +58,13 @@ func LoadConfigBuf(log l4g.Logger, contents []byte) {
 		if fc.Type == "xml" {
 			flw, good = log.PropToFileLogWriter(fc.Properties, enabled)
 			if flw != nil && good {
-				flw.SetFormat(
+				flw.Set("format", 
 `	<record level="%L">
 		<timestamp>%D %T</timestamp>
 		<source>%S</source>
 		<message>%M</message>
 	</record>`)
-				flw.SetHeadFoot("<log created=\"%D %T\">", "</log>")
+				flw.Set("head","<log created=\"%D %T\">").Set("foot", "</log>")
 			}
 			lw = flw
 		} else {

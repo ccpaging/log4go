@@ -12,6 +12,7 @@ var (
 	FORMAT_DEFAULT = "[%D %T %z] [%L] (%S) %M"
 	FORMAT_SHORT   = "[%t %d] [%L] %M"
 	FORMAT_ABBREV  = "[%L] %M"
+	FORMAT_UTC	   = false
 )
 
 type formatCacheType struct {
@@ -45,19 +46,24 @@ func FormatLogRecord(format string, rec *LogRecord) string {
 		return ""
 	}
 
+	t := rec.Created
+	if FORMAT_UTC {
+		t = t.UTC()
+	}
+
 	out := bytes.NewBuffer(make([]byte, 0, 64))
-	secs := rec.Created.UnixNano() / 1e9
+	secs := t.UnixNano() / 1e9
 
 	cache := *formatCache
 	if cache.LastUpdateSeconds != secs {
-		month, day, year := rec.Created.Month(), rec.Created.Day(), rec.Created.Year()
-		hour, minute, second := rec.Created.Hour(), rec.Created.Minute(), rec.Created.Second()
+		month, day, year := t.Month(), t.Day(), t.Year()
+		hour, minute, second := t.Hour(), t.Minute(), t.Second()
 		updated := &formatCacheType{
 			LastUpdateSeconds: secs,
 			shortTime:         fmt.Sprintf("%02d:%02d", hour, minute),
 			longTime:          fmt.Sprintf("%02d:%02d:%02d", hour, minute, second),
-			shortZone:         rec.Created.Format("MST"),
-			longZone:          rec.Created.Format("-0700"),
+			shortZone:         t.Format("MST"),
+			longZone:          t.Format("-0700"),
 			shortDate:         fmt.Sprintf("%02d/%02d/%02d", day, month, year%100),
 			longDate:          fmt.Sprintf("%04d/%02d/%02d", year, month, day),
 		}

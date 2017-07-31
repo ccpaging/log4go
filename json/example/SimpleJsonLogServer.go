@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"encoding/json"
+	log "github.com/ccpaging/log4go"
+	"github.com/ccpaging/log4go/color"
 )
+
+
 
 var (
 	port = flag.String("p", "12124", "Port number to listen on")
@@ -26,7 +31,26 @@ func handleListener(listener *net.UDPConn){
         return
 	}
 
-	fmt.Print(string(buffer[:buflen]))
+	// fmt.Println(string(buffer[:buflen]))
+
+	rec, err := Decode(buffer[:buflen])
+	if err != nil {
+		fmt.Printf("Err: %v, [%s]\n", err, string(buffer[:buflen]))
+	}
+	// fmt.Println(rec)
+	log.Log(rec.Level, rec.Source, rec.Message)
+}
+
+func Decode(data []byte) (*log.LogRecord, error) {
+	var rec log.LogRecord
+	
+	// Make the log record
+	err := json.Unmarshal(data, &rec)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &rec, nil
 }
 
 func checkError(err error) {
@@ -38,6 +62,8 @@ func checkError(err error) {
 
 func main() {
 	flag.Parse()
+
+	log.AddFilter("stdout", log.FINEST, color.NewLogWriter())
 
 	// Bind to the port
 	bind, err := net.ResolveUDPAddr("udp4", "0.0.0.0:" + *port)
@@ -52,4 +78,7 @@ func main() {
 	for {
 		handleListener(listener)
 	}
+
+	// This makes sure the output stream buffer is written
+	log.Close()
 }

@@ -4,7 +4,7 @@ import (
 	"time"
 
 	log "github.com/ccpaging/log4go"
-	"github.com/ccpaging/log4go/colorlog"
+	"github.com/ccpaging/log4go/color"
 )
 
 
@@ -13,7 +13,7 @@ func main() {
 	// "stdout" is default ConsoleLogWriter added to log.Global
 	// As old version. Have to close all exist LogWriter.
 	// log.Close()
-	log.AddFilter("stdout", log.DEBUG, colorlog.NewColorLogWriter())
+	log.AddFilter("stdout", log.DEBUG, colorlog.NewLogWriter())
 	log.Debug("The time is now: %s", time.Now().Format("15:04:05 MST 2006/01/02"))
 	log.Info("The time is now: %s", time.Now().Format("15:04:05 MST 2006/01/02"))
 	log.Warn("The time is now: %s", time.Now().Format("15:04:05 MST 2006/01/02"))

@@ -3,7 +3,6 @@
 package log4go
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -14,6 +13,7 @@ type SocketLogWriter struct {
 	sock 	net.Conn
 	proto	string
 	hostport string
+	format 	string
 }
 
 func (w *SocketLogWriter) Close() {
@@ -27,19 +27,13 @@ func NewSocketLogWriter(proto, hostport string) *SocketLogWriter {
 		sock:	nil,
 		proto:	proto,
 		hostport:	hostport,
+		format: FORMAT_DEFAULT,
 	}
 	return s
 }
 
 func (s *SocketLogWriter) LogWrite(rec *LogRecord) {
-
-	// Marshall into JSON
-	js, err := json.Marshal(rec)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "SocketLogWriter(%s): %v\n", s.hostport, err)
-		return
-	}
-
+	var err error
 	if s.sock == nil {
 		s.sock, err = net.Dial(s.proto, s.hostport)
 		if err != nil {
@@ -52,7 +46,7 @@ func (s *SocketLogWriter) LogWrite(rec *LogRecord) {
 		}
 	}
 
-	_, err = s.sock.Write(js)
+	_, err = s.sock.Write([]byte(FormatLogRecord(s.format, rec)))
 	if err == nil {
 		return
 	}
@@ -62,3 +56,31 @@ func (s *SocketLogWriter) LogWrite(rec *LogRecord) {
 	s.sock = nil
 }
 
+// Set option. chainable
+func (s *SocketLogWriter) Set(name string, v interface{}) *SocketLogWriter {
+	s.SetOption(name, v)
+	return s
+}
+
+// Set option. checkable
+func (s *SocketLogWriter) SetOption(name string, v interface{}) error {
+	var ok bool
+	switch name {
+	case "format":
+		if s.format, ok = v.(string); !ok {
+			return ErrBadValue
+		}
+		return nil
+	default:
+		return ErrBadOption
+	}
+}
+
+func (s *SocketLogWriter) GetOption(name string) (interface{}, error) {
+	switch name {
+	case "format":
+		return s.format, nil
+	default:
+		return nil, ErrBadOption
+	}
+}

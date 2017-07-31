@@ -5,8 +5,6 @@ package log4go
 import (
 	"errors"
 	"fmt"
-	"os"
-	"io"
 	"strings"
 )
 
@@ -16,22 +14,12 @@ var (
 
 func init() {
 	Global = Logger {
-		"stdout": NewFilter(DEBUG, NewConsoleLogWriter().SetFormat("%T %L %s %M")),
+		"stdout": NewFilter(DEBUG, NewConsoleLogWriter().Set("format", "%T %L %s %M")),
 	}
 }
 
 func GetGlobalLogger() Logger {
 	return Global
-}
-
-// Wrapper for (*Logger).LoadConfiguration
-func LoadConfiguration(filename string) {
-	Global.LoadConfiguration(filename)
-}
-
-// Wrapper for (*Logger).LoadConfigBuf
-func LoadConfigBuf(buf []byte) {
-	Global.LoadConfigBuf(buf)
 }
 
 // Wrapper for (*Logger).AddFilter
@@ -233,114 +221,4 @@ func Critical(arg0 interface{}, args ...interface{}) error {
 		return errors.New(fmt.Sprint(first) + fmt.Sprintf(strings.Repeat(" %v", len(args)), args...))
 	}
 	return nil
-}
-
-// These functions Compatibility with `log`
-
-// New creates a new Logger. The out variable sets the
-// destination to which log data will be written.
-// The prefix appears at the beginning of each generated log line.
-// The flag argument defines the logging properties.
-func New(out io.Writer, prefix string, flag int) *Logger {
-	return &Logger {
-			"stdout": NewFilter(DEBUG, NewOutLogWriter(out, prefix, flag)),
-		}
-}
-
-// SetOutput sets the output destination for the standard logger.
-func SetOutput(w io.Writer) {
-	if clw, ok := Global["stdout"].LogWriter.(*ConsoleLogWriter); ok {
-		clw.SetOutput(w)
-	}
-}
-
-// SetFlags sets the output flags for the standard logger.
-func SetFlags(flag int) {
-	if clw, ok := Global["stdout"].LogWriter.(*ConsoleLogWriter); ok {
-		clw.SetFlags(flag)
-	}
-}
-
-// SetPrefix sets the output prefix for the standard logger.
-func SetPrefix(prefix string) {
-	if clw, ok := Global["stdout"].LogWriter.(*ConsoleLogWriter); ok {
-		clw.SetPrefix(prefix)
-	}
-}
-
-// Write to the standard logger.
-
-// Output writes the output for a logging event. The string s contains
-// the text to print after the prefix specified by the flags of the
-// Logger. A newline is appended if the last character of s is not
-// already a newline. Calldepth is the count of the number of
-// frames to skip when computing the file name and line number
-// if Llongfile or Lshortfile is set; a value of 1 will print the details
-// for the caller of Output.
-func Output(calldepth int, s string) error {
-	Global.CompatOutput(INFO, calldepth, s) // +1 for this frame.
-	return nil
-}
-
-// Print calls Output to print to the standard logger.
-// Arguments are handled in the manner of fmt.Print.
-func Print(v ...interface{}) {
-	Global.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprint(v...))
-}
-
-// Printf calls Output to print to the standard logger.
-// Arguments are handled in the manner of fmt.Printf.
-func Printf(format string, v ...interface{}) {
-	Global.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprintf(format, v...))
-}
-
-// Println calls Output to print to the standard logger.
-// Arguments are handled in the manner of fmt.Println.
-func Println(v ...interface{}) {
-	Global.CompatOutput(INFO, DefaultCallerSkip, fmt.Sprintln(v...))
-}
-
-// Fatal is equivalent to Print() followed by a call to os.Exit(1).
-func Fatal(v ...interface{}) {
-	Global.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprint(v...))
-	Global.Close()
-	os.Exit(1)
-}
-
-// Fatalf is equivalent to Printf() followed by a call to os.Exit(1).
-func Fatalf(format string, v ...interface{}) {
-	Global.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprintf(format, v...))
-	Global.Close()
-	os.Exit(1)
-}
-
-// Fatalln is equivalent to Println() followed by a call to os.Exit(1).
-func Fatalln(v ...interface{}) {
-	Global.CompatOutput(ERROR, DefaultCallerSkip, fmt.Sprintln(v...))
-	Global.Close()
-	os.Exit(1)
-}
-
-// Panic is equivalent to Print() followed by a call to panic().
-func Panic(v ...interface{}) {
-	s := fmt.Sprint(v...)
-	Global.CompatOutput(CRITICAL, DefaultCallerSkip, s)
-	Global.Close()
-	panic(s)
-}
-
-// Panicf is equivalent to Printf() followed by a call to panic().
-func Panicf(format string, v ...interface{}) {
-	s := fmt.Sprintf(format, v...)
-	Global.CompatOutput(CRITICAL, DefaultCallerSkip, s)
-	Global.Close()
-	panic(s)
-}
-
-// Panicln is equivalent to Println() followed by a call to panic().
-func Panicln(v ...interface{}) {
-	s := fmt.Sprintln(v...)
-	Global.CompatOutput(CRITICAL, DefaultCallerSkip, s)
-	Global.Close()
-	panic(s)
 }

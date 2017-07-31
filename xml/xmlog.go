@@ -8,11 +8,11 @@ import (
 
 // NewXMLLogWriter is a utility method for creating a FileLogWriter set up to
 // output XML record log messages instead of line-based ones.
-func NewXMLogWriter(fname string, rotate bool) *l4g.FileLogWriter {
-	return l4g.NewFileLogWriter(fname, rotate).SetFormat(
+func NewLogWriter(fname string, rotate int) *l4g.FileLogWriter {
+	return l4g.NewFileLogWriter(fname, rotate).Set("format", 
 `	<record level="%L">
 		<timestamp>%D %T</timestamp>
 		<source>%S</source>
 		<message>%M</message>
-	</record>`).SetHeadFoot("<log created=\"%D %T\">", "</log>")
+	</record>`).Set("head","<log created=\"%D %T\">").Set("foot", "</log>")
 }

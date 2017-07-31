@@ -126,30 +126,7 @@ func TestFileLogWriter(t *testing.T) {
 	}(DefaultBufferLength)
 	DefaultBufferLength = 0
 
-	w := NewFileLogWriter(testLogFile, false)
-	if w == nil {
-		t.Fatalf("Invalid return: w should not be nil")
-	}
-	defer os.Remove(testLogFile)
-
-	w.LogWrite(newLogRecord(CRITICAL, "source", "message"))
-	w.Close()
-	runtime.Gosched()
-
-	if contents, err := ioutil.ReadFile(testLogFile); err != nil {
-		t.Errorf("read(%q): %s", testLogFile, err)
-	} else if len(contents) != 50 {
-		t.Errorf("malformed filelog: %q (%d bytes)", string(contents), len(contents))
-	}
-}
-
-func TestCacheFileLogWriter(t *testing.T) {
-	defer func(buflen int) {
-		DefaultBufferLength = buflen
-	}(DefaultBufferLength)
-	DefaultBufferLength = 0
-
-	w := NewCacheFileLogWriter(testLogFile, 0)
+	w := NewFileLogWriter(testLogFile, 0)
 	if w == nil {
 		t.Fatalf("Invalid return: w should not be nil")
 	}
@@ -233,7 +210,7 @@ func TestLogOutput(t *testing.T) {
 	l := make(Logger)
 
 	// Delete and open the output log without a timestamp (for a constant md5sum)
-	l.AddFilter("file", FINEST, NewFileLogWriter(testLogFile, false).SetFormat("[%L] %M"))
+	l.AddFilter("file", FINEST, NewFileLogWriter(testLogFile, 0).Set("format", "[%L] %M"))
 	defer os.Remove(testLogFile)
 
 	// Send some log messages
@@ -305,110 +282,6 @@ func TestCountMallocs(t *testing.T) {
 	fmt.Printf("mallocs per unlogged sl.Logf(WARNING, \"%%s is a log message with level %%d\", \"This\", WARNING): %d\n", mallocs/N)
 }
 
-func TestJsonConfig(t *testing.T) {
-	const (
-		configfile = "_example.json"
-	)
-
-	fd, err := os.Create(configfile)
-	if err != nil {
-		t.Fatalf("Could not open %s for writing: %s", configfile, err)
-	}
-
-	fmt.Fprintln(fd, 
-`{
-	"filters": [
-	{
-	  "enabled": "true",
-	  "tag": "stdout",
-	  "type": "console",
-	  "level": "DEBUG",
-	  "properties": [
-		{
-		  "name": "format",
-		  "value": "[%D %T] [%L] (%S) %M"
-		}
-	  ]
-	},
-	{
-	  "enabled": "true",
-	  "tag": "file",
-	  "type": "file",
-	  "level": "FINEST",
-	  "properties": [
-		{
-		  "name": "filename",
-		  "value": "_test.log"
-		}
-	  ]
-	},
-	{
-	  "enabled": "true",
-	  "tag": "socket",
-	  "type": "socket",
-	  "level": "FINEST",
-	  "properties": [
-		{
-		  "name": "protocol",
-		  "value": "udp"
-		},
-		{
-		  "name": "endpoint",
-		  "value": "127.0.0.1:12124"
-		}
-	  ]
-	}
-	]
-}`)
-	fd.Close()
-
-	log := NewLogger()
-	log.LoadConfiguration(configfile)
-	defer os.Remove("_test.log")
-	defer log.Close()
-
-	// Make sure we got all loggers
-	if len(log) != 3 {
-		t.Fatalf("JsonConfig: Expected 3 filters, found %d", len(log))
-	}
-
-	// Make sure they're the right keys
-	if _, ok := log["stdout"]; !ok {
-		t.Errorf("JsonConfig: Expected stdout logger")
-	}
-	if _, ok := log["file"]; !ok {
-		t.Fatalf("JsonConfig: Expected file logger")
-	}
-
-	// Make sure they're the right type
-	if _, ok := log["stdout"].LogWriter.(*ConsoleLogWriter); !ok {
-		t.Fatalf("JsonConfig: Expected stdout to be ConsoleLogWriter, found %T", log["stdout"].LogWriter)
-	}
-	if _, ok := log["file"].LogWriter.(*FileLogWriter); !ok {
-		t.Fatalf("JsonConfig: Expected file to be *FileLogWriter, found %T", log["file"].LogWriter)
-	}
-
-	// Make sure levels are set
-	if lvl := log["stdout"].Level; lvl != DEBUG {
-		t.Errorf("JsonConfig: Expected stdout to be set to level %d, found %d", DEBUG, lvl)
-	}
-	if lvl := log["file"].Level; lvl != FINEST {
-		t.Errorf("JsonConfig: Expected file to be set to level %d, found %d", FINEST, lvl)
-	}
-
-	// Make sure the w is open and points to the right file
-	if fname := log["file"].LogWriter.(*FileLogWriter).file.Name(); fname != "_test.log" {
-		t.Errorf("JsonConfig: Expected file to have opened %s, found %s", "test.log", fname)
-	}
-
-	// Save Json config file
-	err = os.Rename(configfile, "examples/singleconfig.json") // Keep this so that an example with the documentation is available
-	if err != nil {
-		t.Fatalf("Could not rename %s: %s", configfile, err)
-	}
-	os.Remove(configfile)
-}
-
 func BenchmarkFormatLogRecord(b *testing.B) {
 	const updateEvery = 1
 	rec := &LogRecord{
@@ -469,7 +342,7 @@ func BenchmarkConsoleUtilNotLog(b *testing.B) {
 func BenchmarkFileLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 0))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Log(WARNING, "here", "This is a log message")
@@ -482,7 +355,7 @@ func BenchmarkFileLog(b *testing.B) {
 func BenchmarkFileNotLogged(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 0))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Log(DEBUG, "here", "This is a log message")
@@ -495,7 +368,7 @@ func BenchmarkFileNotLogged(b *testing.B) {
 func BenchmarkFileUtilLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 0))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Info("%s is a log message", "This")
@@ -508,7 +381,7 @@ func BenchmarkFileUtilLog(b *testing.B) {
 func BenchmarkFileUtilNotLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, false))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 0))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Debug("%s is a log message", "This")
@@ -521,7 +394,7 @@ func BenchmarkFileUtilNotLog(b *testing.B) {
 func BenchmarkCacheFileLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 4096))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Log(WARNING, "here", "This is a log message")
@@ -534,7 +407,7 @@ func BenchmarkCacheFileLog(b *testing.B) {
 func BenchmarkCacheFileNotLogged(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 4096))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Log(DEBUG, "here", "This is a log message")
@@ -547,7 +420,7 @@ func BenchmarkCacheFileNotLogged(b *testing.B) {
 func BenchmarkCacheFileUtilLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 4096))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Info("%s is a log message", "This")
@@ -560,7 +433,7 @@ func BenchmarkCacheFileUtilLog(b *testing.B) {
 func BenchmarkCacheFileUtilNotLog(b *testing.B) {
 	sl := make(Logger)
 	b.StopTimer()
-	sl.AddFilter("cachefile", INFO, NewCacheFileLogWriter(benchLogFile, 0))
+	sl.AddFilter("file", INFO, NewFileLogWriter(benchLogFile, 0).Set("flush", 4096))
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		sl.Debug("%s is a log message", "This")
