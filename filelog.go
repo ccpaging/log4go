@@ -449,6 +449,7 @@ func (w *FileLogWriter) SetOption(name string, v interface{}) error {
 	return nil
 }
 
+/* Not using now
 func (w *FileLogWriter) GetOption(name string) (interface{}, error) {
 	switch name {
 	case "filename":
@@ -473,3 +474,4 @@ func (w *FileLogWriter) GetOption(name string) (interface{}, error) {
 		return nil, ErrBadOption
 	}
 }
+*/

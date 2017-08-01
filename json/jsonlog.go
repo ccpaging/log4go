@@ -88,15 +88,3 @@ func (s *JsonLogWriter) SetOption(name string, v interface{}) error {
 	}
 	return nil
 }
-
-// Get option. checkable
-func (s *JsonLogWriter) GetOption(name string) (interface{}, error) {
-	switch name {
-	case "protocol":
-		return s.proto, nil
-	case "endpoint":
-		return s.hostport, nil
-	default:
-		return nil, l4g.ErrBadOption
-	}
-}

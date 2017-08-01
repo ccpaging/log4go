@@ -100,16 +100,3 @@ func (s *SocketLogWriter) SetOption(name string, v interface{}) error {
 	}
 	return nil
 }
-
-func (s *SocketLogWriter) GetOption(name string) (interface{}, error) {
-	switch name {
-	case "protocol":
-		return s.proto, nil
-	case "endpoint":
-		return s.hostport, nil
-	case "format":
-		return s.format, nil
-	default:
-		return nil, ErrBadOption
-	}
-}

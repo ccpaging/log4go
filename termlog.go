@@ -52,13 +52,3 @@ func (c *ConsoleLogWriter) SetOption(name string, v interface{}) error {
 		return ErrBadOption
 	}
 }
-
-// Get option. checkable
-func (c *ConsoleLogWriter) GetOption(name string) (interface{}, error) {
-	switch name {
-	case "format":
-		return c.format, nil
-	default:
-		return nil, ErrBadOption
-	}
-}
