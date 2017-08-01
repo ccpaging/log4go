@@ -5,15 +5,25 @@ package log4go
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 	"bufio"
 	"io"
 	"sync"
+	"runtime"
 )
 
 var (
+	// Default filename. Set by init
+	DefaultFileName = ""
+
+	// Default log file and directory perm
+	DefaultFilePerm = os.FileMode(0660)
+
+	// Default flush size of cache writing file
+	DefaultFileFlush = 4096
+
 	// Default rotate cycle in seconds
 	DefaultRotCycle int64 = 86400
 
@@ -22,15 +32,19 @@ var (
 
 	// Default rotate max size
 	DefaultRotSize int64 = 1024 * 1024 * 10
-
-	// Default flush size of cache writing file
- 	DefaultFileFlush = 4096
-
-	// Default log file and directory perm
-	DefaultFilePerm = os.FileMode(0660)
 )
 
 var DEBUG_ROTATE bool = false
+
+
+func init() {
+	base := filepath.Base(os.Args[0])
+	ext := filepath.Ext(base)
+	DefaultFileName = strings.TrimSuffix(base, ext) + ".log"
+	if runtime.GOOS != "windows" {
+		DefaultFileName = "~/log/" + DefaultFileName
+	}
+}
 
 // This log writer sends output to a file
 type FileLogWriter struct {
@@ -119,11 +133,6 @@ func (w *FileLogWriter) fileClose() {
 // The standard log-line format is:
 //   [%D %T] [%L] (%S) %M
 func NewFileLogWriter(fname string, rotate int) *FileLogWriter {
-    err := os.MkdirAll(path.Dir(fname), DefaultFilePerm)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "FileLogWriter(%s): %s\n", fname, err)
-		return nil
-	}
 	w := &FileLogWriter{
 		filename: fname,
 		format:   FORMAT_DEFAULT,
@@ -142,7 +151,9 @@ func NewFileLogWriter(fname string, rotate int) *FileLogWriter {
 		closedLoop: make(chan struct{}),
 		resetLoop: make(chan time.Time, 5),
 	}
-
+	if w.filename == "" {
+		w.filename = DefaultFileName
+	}
 	w.resetLoop <- time.Now()
 	return w
 }
@@ -292,7 +303,7 @@ func (w *FileLogWriter) intRotate() {
 	// May compress new log file here
 
 	go func() {
-		ext := path.Ext(w.filename) // like ".log"
+		ext := filepath.Ext(w.filename) // like ".log"
 		base := strings.TrimSuffix(w.filename, ext) // include dir
 		
 		if DEBUG_ROTATE { fmt.Println(w.rotate, base, ext) }
@@ -343,9 +354,16 @@ func (w *FileLogWriter) Set(name string, v interface{}) *FileLogWriter {
 func (w *FileLogWriter) SetOption(name string, v interface{}) error {
 	var ok bool
 	switch name {
-	case "format":
-		if w.format, ok = v.(string); !ok {
+	case "filename":
+		if w.filename, ok = v.(string); !ok {
 			return ErrBadValue
+		}
+		if len(w.filename) <= 0 {
+			return ErrBadValue
+		}
+		err := os.MkdirAll(filepath.Dir(w.filename), DefaultFilePerm)
+		if err != nil {
+			return err
 		}
 	case "flush":
 		switch value := v.(type) {
@@ -413,6 +431,10 @@ func (w *FileLogWriter) SetOption(name string, v interface{}) error {
 		default:
 			return ErrBadValue
 		}
+	case "format":
+		if w.format, ok = v.(string); !ok {
+			return ErrBadValue
+		}
 	case "head":
 		if w.header, ok = v.(string); !ok {
 			return ErrBadValue
@@ -429,8 +451,6 @@ func (w *FileLogWriter) SetOption(name string, v interface{}) error {
 
 func (w *FileLogWriter) GetOption(name string) (interface{}, error) {
 	switch name {
-	case "format":
-		return w.format, nil
 	case "filename":
 		return w.filename, nil
 	case "flush":
@@ -443,6 +463,8 @@ func (w *FileLogWriter) GetOption(name string) (interface{}, error) {
 		return w.rotate, nil
 	case "maxsize":
 		return w.maxsize, nil
+	case "format":
+		return w.format, nil
 	case "head":
 		return w.header, nil
 	case "foot":

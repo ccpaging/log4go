@@ -12,7 +12,7 @@ func main() {
 	log.AddFilter("stdout", l4g.DEBUG, l4g.NewConsoleLogWriter())
 
 	// Run `nc -u -l -p 12124` or similar before you run this to see the following message
-	log.Info("The time is now: %s", time.Now().Format("15:04:05 MST 2006/01/02"))
+	log.Info("The time is now: %s", time.Now().Format("15:04:05 MST 2006-01-02"))
 	log.Log(l4g.DEBUG, "myApp", "Send a log message with manual level, source, and message.")
 
 	for i := 0; i < 5; i++ {

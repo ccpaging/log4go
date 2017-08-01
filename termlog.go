@@ -53,6 +53,7 @@ func (c *ConsoleLogWriter) SetOption(name string, v interface{}) error {
 	}
 }
 
+// Get option. checkable
 func (c *ConsoleLogWriter) GetOption(name string) (interface{}, error) {
 	switch name {
 	case "format":

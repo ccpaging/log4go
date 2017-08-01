@@ -116,6 +116,11 @@ type LogRecord struct {
 
 // This is an interface for anything that should be able to write logs
 type LogWriter interface {
+	// Set option about the LogWriter. The options should be set as default.
+	// Must be set before the first log message is written if changed.
+	// You should test more if have to change options while running.
+	SetOption(name string, v interface{}) error
+
 	// This will be called to log a LogRecord message.
 	LogWrite(rec *LogRecord)
 

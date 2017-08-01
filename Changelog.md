@@ -1,10 +1,14 @@
-2017-07-31
+2017-08-01
 
 * Move json config and json socklog to `json` as extension
 
 * Move compat with `log` to compat.go
 
 * Replace FileLogWriter with CacheFileLogWriter
+
+* Add SetOption() to LogWriter
+
+* Add default variables about filelog and socklog
 
 2017-07-25
 

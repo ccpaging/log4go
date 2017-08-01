@@ -61,3 +61,42 @@ func (s *JsonLogWriter) LogWrite(rec *l4g.LogRecord) {
 	s.sock.Close()
 	s.sock = nil
 }
+
+// Set option. chainable
+func (s *JsonLogWriter) Set(name string, v interface{}) *JsonLogWriter {
+	s.SetOption(name, v)
+	return s
+}
+
+// Set option. checkable
+func (s *JsonLogWriter) SetOption(name string, v interface{}) error {
+	var ok bool
+	switch name {
+	case "protocol":
+		if s.proto, ok = v.(string); !ok {
+			return l4g.ErrBadValue
+		}
+	case "endpoint":
+		if s.hostport, ok = v.(string); !ok {
+			return l4g.ErrBadValue
+		}
+		if len(s.hostport) <= 0 {
+			return l4g.ErrBadValue
+		}
+	default:
+		return l4g.ErrBadOption
+	}
+	return nil
+}
+
+// Get option. checkable
+func (s *JsonLogWriter) GetOption(name string) (interface{}, error) {
+	switch name {
+	case "protocol":
+		return s.proto, nil
+	case "endpoint":
+		return s.hostport, nil
+	default:
+		return nil, l4g.ErrBadOption
+	}
+}

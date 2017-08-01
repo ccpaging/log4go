@@ -74,7 +74,9 @@ func (log Logger) CheckFilterConfig(fc FilterConfig) (bad bool, enabled bool, lv
 	case "CRITICAL":
 		lvl = CRITICAL
 	default:
-		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required child <%s> for filter has unknown value. %s\n", "level", fc.Level)
+		fmt.Fprintf(os.Stderr, 
+			"LoadConfiguration: Required child <%s> for filter has unknown value. %s\n", 
+			"level", fc.Level)
 		bad = true
 	}
 	return bad, enabled, lvl
@@ -83,30 +85,22 @@ func (log Logger) CheckFilterConfig(fc FilterConfig) (bad bool, enabled bool, lv
 func (log Logger) MakeLogWriter(fc FilterConfig, enabled bool) (LogWriter, bool) {
 	var (
 		lw LogWriter
-		good bool
 	)
 	switch fc.Type {
 	case "console":
-		lw, good = propToConsoleLogWriter(fc.Properties, enabled)
+		lw = NewConsoleLogWriter()
 	case "file":
-		lw, good = log.PropToFileLogWriter(fc.Properties, enabled)
+		lw = NewFileLogWriter(DefaultFileName, 0)
 	case "socket":
-		lw, good = propToSocketLogWriter(fc.Properties, enabled)
+		lw = NewSocketLogWriter(DefaultSockProto, DefaultSockEndPoint)
 	default:
-		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not load LogConfiguration. Unknown filter type \"%s\"\n", fc.Type)
+		fmt.Fprintf(os.Stderr, "LoadConfiguration: Unknown filter type \"%s\"\n", fc.Type)
 		return nil, false
 	}
-	return lw, good
-}
 
-func propToConsoleLogWriter(props []FilterProp, enabled bool) (*ConsoleLogWriter, bool) {
-	clw := NewConsoleLogWriter()
-	// Parse properties
-	for _, prop := range props {
-		err := clw.SetOption(prop.Name, strings.Trim(prop.Value, " \r\n"))
-		if err != nil { 
-			fmt.Fprintf(os.Stderr, "Console filter Warning: \"%s\", %v\n", prop.Name, err)
-		}
+	_, good := log.ConfigLogWriter(lw, fc.Properties)
+	if !good {
+		return nil, false
 	}
 
 	// If it's disabled, we're just checking syntax
@@ -114,7 +108,25 @@ func propToConsoleLogWriter(props []FilterProp, enabled bool) (*ConsoleLogWriter
 		return nil, true
 	}
 
-	return clw, true
+	return lw, good
+}
+
+func (log Logger) ConfigLogWriter(lw LogWriter, props []FilterProp) (LogWriter, bool) {
+	good := true
+	for _, prop := range props {
+		err := lw.SetOption(prop.Name, strings.Trim(prop.Value, " \r\n"))
+		if err != nil {
+			switch err {
+			case ErrBadValue:
+				fmt.Fprintf(os.Stderr, "LoadConfiguration: console filter, Bad value of \"%s\"\n", prop.Name)
+				good = false
+			case ErrBadOption:
+				fmt.Fprintf(os.Stderr, "LoadConfiguration: console filter, Unknown property \"%s\"\n", prop.Name)
+			default:
+			}
+		}
+	}
+	return lw, good
 }
 
 // Parse a number with K/M/G suffixes based on thousands (1000) or 2^10 (1024)
@@ -135,93 +147,4 @@ func StrToNumSuffix(str string, mult int) int {
 	}
 	parsed, _ := strconv.Atoi(str)
 	return parsed * num
-}
-
-// cycle, delay0, time.Duration. Parse a duration string.
-// A duration string is a possibly signed sequence of decimal numbers,
-// each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m".
-// Valid time units are "ns", "us", "ms", "s", "m", "h".
-func (log Logger) PropToFileLogWriter(props []FilterProp, enabled bool) (*FileLogWriter, bool) {
-	filename := ""
-	rotate := 0
-	cycle := "24h"
-	delay0 := "0h"
-	format := "[%D %T] [%L] (%S) %M"
-	flush := 0
-	maxsize := "10M"
-
-	// Parse properties
-	for _, prop := range props {
-		switch prop.Name {
-		case "filename":
-			filename = strings.Trim(prop.Value, " \r\n")
-		case "rotate":
-			rotate = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1)
-		case "cycle":
-			maxsize = strings.Trim(prop.Value, " \r\n")
-		case "delay0":
-			delay0 = strings.Trim(prop.Value, " \r\n")
-		case "format":
-			format = strings.Trim(prop.Value, " \r\n")
-		case "flush":
-			flush = StrToNumSuffix(strings.Trim(prop.Value, " \r\n"), 1024)
-		case "maxsize":
-			maxsize = strings.Trim(prop.Value, " \r\n")
-		default:
-			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for file filter\n", prop.Name)
-		}
-	}
-
-	// Check properties
-	if len(filename) == 0 {
-		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required property \"%s\" for file filter missing\n", "filename")
-		return nil, false
-	}
-
-	// If it's disabled, we're just checking syntax
-	if !enabled {
-		return nil, true
-	}
-
-	flw := NewFileLogWriter(filename, rotate).Set("cycle", cycle).Set("delay0", delay0)
-	if flw == nil {
-		return nil, false
-	}
-	flw.SetOption("format", format)
-	flw.SetOption("flush", flush)
-	flw.SetOption("maxsize", maxsize)
-	return flw, true
-}
-
-func propToSocketLogWriter(props []FilterProp, enabled bool) (*SocketLogWriter, bool) {
-	endpoint := ""
-	protocol := "udp"
-	format := "[%D %T] [%L] (%S) %M"
-
-	// Parse properties
-	for _, prop := range props {
-		switch prop.Name {
-		case "endpoint":
-			endpoint = strings.Trim(prop.Value, " \r\n")
-		case "protocol":
-			protocol = strings.Trim(prop.Value, " \r\n")
-		case "format":
-			format = strings.Trim(prop.Value, " \r\n")
-		default:
-			fmt.Fprintf(os.Stderr, "LoadConfiguration Warning: Unknown property \"%s\" for file filter\n", prop.Name)
-		}
-	}
-
-	// Check properties
-	if len(endpoint) == 0 {
-		fmt.Fprintf(os.Stderr, "LoadConfiguration: Required property \"%s\" for file filter missing\n", "endpoint")
-		return nil, false
-	}
-
-	// If it's disabled, we're just checking syntax
-	if !enabled {
-		return nil, true
-	}
-
-	return NewSocketLogWriter(protocol, endpoint).Set("format", format), true
 }

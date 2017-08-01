@@ -31,13 +31,12 @@ func handleListener(listener *net.UDPConn){
         return
 	}
 
-	// fmt.Println(string(buffer[:buflen]))
-
 	rec, err := Decode(buffer[:buflen])
 	if err != nil {
-		fmt.Printf("Err: %v, [%s]\n", err, string(buffer[:buflen]))
+		fmt.Println(string(buffer[:buflen]))
+		fmt.Println("Err:", err)
+		return
 	}
-	// fmt.Println(rec)
 	log.Log(rec.Level, rec.Source, rec.Message)
 }
 
@@ -63,7 +62,7 @@ func checkError(err error) {
 func main() {
 	flag.Parse()
 
-	log.AddFilter("stdout", log.FINEST, color.NewLogWriter())
+	log.AddFilter("stdout", log.FINEST, colorlog.NewLogWriter())
 
 	// Bind to the port
 	bind, err := net.ResolveUDPAddr("udp4", "0.0.0.0:" + *port)

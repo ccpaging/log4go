@@ -28,7 +28,7 @@
 		{
 		  "enabled": "true",
 		  "tag": "socket",
-		  "type": "socket",
+		  "type": "json",
 		  "level": "FINEST",
 		  "properties": [
 			{

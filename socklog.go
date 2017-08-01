@@ -8,6 +8,14 @@ import (
 	"os"
 )
 
+var (
+	// Default rotate cycle in seconds
+	DefaultSockProto string = "udp"
+
+	// Default rotate delay since midnight in seconds
+	DefaultSockEndPoint string = "127.0.0.1:12124"
+)
+
 // This log writer sends output to a socket
 type SocketLogWriter struct {
 	sock 	net.Conn
@@ -28,6 +36,12 @@ func NewSocketLogWriter(proto, hostport string) *SocketLogWriter {
 		proto:	proto,
 		hostport:	hostport,
 		format: FORMAT_DEFAULT,
+	}
+	if s.proto == "" {
+		s.proto = DefaultSockProto
+	}
+	if s.hostport == "" {
+		s.hostport = DefaultSockEndPoint
 	}
 	return s
 }
@@ -66,18 +80,33 @@ func (s *SocketLogWriter) Set(name string, v interface{}) *SocketLogWriter {
 func (s *SocketLogWriter) SetOption(name string, v interface{}) error {
 	var ok bool
 	switch name {
+	case "protocol":
+		if s.proto, ok = v.(string); !ok {
+			return ErrBadValue
+		}
+	case "endpoint":
+		if s.hostport, ok = v.(string); !ok {
+			return ErrBadValue
+		}
+		if len(s.hostport) <= 0 {
+			return ErrBadValue
+		} 
 	case "format":
 		if s.format, ok = v.(string); !ok {
 			return ErrBadValue
 		}
-		return nil
 	default:
 		return ErrBadOption
 	}
+	return nil
 }
 
 func (s *SocketLogWriter) GetOption(name string) (interface{}, error) {
 	switch name {
+	case "protocol":
+		return s.proto, nil
+	case "endpoint":
+		return s.hostport, nil
 	case "format":
 		return s.format, nil
 	default:

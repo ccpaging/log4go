@@ -40,8 +40,12 @@ func LoadConfigBuf(log l4g.Logger, contents []byte) {
 		fmt.Fprintf(os.Stderr, "LoadConfiguration: Could not parse Json LogConfiguration. %s\n", err)
 		os.Exit(1)
 	}
-
 	l4g.Close()
+
+	var (
+		lw l4g.LogWriter
+		good bool
+	)
 	for _, fc := range jc.Filters {
 		bad, enabled, lvl := log.CheckFilterConfig(fc)
 	
@@ -50,7 +54,12 @@ func LoadConfigBuf(log l4g.Logger, contents []byte) {
 			os.Exit(1)
 		}
 	
-		lw, good := log.MakeLogWriter(fc, enabled)
+		if fc.Type == "json" {
+			lw = NewLogWriter(l4g.DefaultSockProto, l4g.DefaultSockEndPoint)
+			_, good = log.ConfigLogWriter(lw, fc.Properties)
+		} else {
+			lw, good = log.MakeLogWriter(fc, enabled)
+		}
 	
 		// Just so all of the required params are errored at the same time if wrong
 		if !good {

@@ -57,3 +57,33 @@ func (c *ColorLogWriter) LogWrite(rec *l4g.LogRecord) {
 	defer ct.ResetColor()
 	fmt.Fprint(c.iow, l4g.FormatLogRecord(c.format, rec))
 }
+
+// Set option. chainable
+func (c *ColorLogWriter) Set(name string, v interface{}) *ColorLogWriter {
+	c.SetOption(name, v)
+	return c
+}
+
+// Set option. checkable
+func (c *ColorLogWriter) SetOption(name string, v interface{}) error {
+	var ok bool
+	switch name {
+	case "format":
+		if c.format, ok = v.(string); !ok {
+			return l4g.ErrBadValue
+		}
+		return nil
+	default:
+		return l4g.ErrBadOption
+	}
+}
+
+// Get option. checkable
+func (c *ColorLogWriter) GetOption(name string) (interface{}, error) {
+	switch name {
+	case "format":
+		return c.format, nil
+	default:
+		return nil, l4g.ErrBadOption
+	}
+}

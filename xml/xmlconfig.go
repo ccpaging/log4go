@@ -44,7 +44,6 @@ func LoadConfigBuf(log l4g.Logger, contents []byte) {
 	l4g.Close()
 	var (
 		lw l4g.LogWriter
-		flw *l4g.FileLogWriter
 		good bool
 	)
 	for _, fc := range xc.Filters {
@@ -56,17 +55,15 @@ func LoadConfigBuf(log l4g.Logger, contents []byte) {
 		}
 	
 		if fc.Type == "xml" {
-			flw, good = log.PropToFileLogWriter(fc.Properties, enabled)
-			if flw != nil && good {
-				flw.Set("format", 
+			lw, good = log.ConfigLogWriter(l4g.NewFileLogWriter(l4g.DefaultFileName, 0), fc.Properties)
+			lw.SetOption("head","<log created=\"%D %T\">")
+			lw.SetOption("format", 
 `	<record level="%L">
 		<timestamp>%D %T</timestamp>
 		<source>%S</source>
 		<message>%M</message>
 	</record>`)
-				flw.Set("head","<log created=\"%D %T\">").Set("foot", "</log>")
-			}
-			lw = flw
+			lw.SetOption("foot", "</log>")
 		} else {
 			lw, good = log.MakeLogWriter(fc, enabled)
 		}
