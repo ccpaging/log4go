@@ -54,4 +54,4 @@ You may create a new writer extension. For example:
 
 * Store log messages in MySQL
 
-Even new configuration file format like INI style.
+Even new configuration file format like yaml, linux cfg, windows INI, etc.

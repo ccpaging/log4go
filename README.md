@@ -58,3 +58,4 @@ Acknowledgements:
 4. <https://github.com/sirupsen/logrus>
 5. <https://github.com/YoungPioneers/blog4go>
 6. <https://github.com/cihub/seelog>
+7. <https://github.com/golang/glog>

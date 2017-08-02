@@ -24,9 +24,9 @@ type SocketLogWriter struct {
 	format 	string
 }
 
-func (w *SocketLogWriter) Close() {
-	if w.sock != nil {
-		w.sock.Close()
+func (s *SocketLogWriter) Close() {
+	if s.sock != nil {
+		s.sock.Close()
 	}
 }
 
