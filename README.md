@@ -4,13 +4,15 @@ In Production Environment, please consider release Version 5 in the near future.
 
 Forked from http://log4go.googlecode.com/
 
-* Sync write, Structured, Extendable
+* Sync write, Structured
+
+* Log writer extendable
 
 * Format message with date, time, zone, source, line number
 
-* File configuration
+* Fast and buffered log file writer with rotate
 
-* Fast log file writer with rotate
+* File configuration extendable
 
 * Compatibility with golang `log`
 
