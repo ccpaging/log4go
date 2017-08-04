@@ -9,28 +9,28 @@ import (
 )
 
 type FileRotate struct {
-    rotCount int
-    rotFiles chan string
+	rotCount int
+	rotFiles chan string
 }
 
 var (
-    DefaultRotateLen = 5
+	DefaultRotateLen = 5
 )
 
 func (r *FileRotate) initRot() {
-    r.rotCount = 0
-    r.rotFiles = make(chan string, DefaultRotateLen)
+	r.rotCount = 0
+	r.rotFiles = make(chan string, DefaultRotateLen)
 }
 
 // Rename history log files to "<name>.00?.<ext>"
 func (r *FileRotate) rotFile(filename string, rotate int, newLog string) {
-    r.rotFiles <- newLog 
-    if r.rotCount > 0 {
+	r.rotFiles <- newLog 
+	if r.rotCount > 0 {
 		if DEBUG_ROTATE { fmt.Println("queued", newLog) }
-        return
-    }
+		return
+	}
 
-    r.rotCount++
+	r.rotCount++
 
 	for len(r.rotFiles) > 0 {
 		newFile, _ := <- r.rotFiles
@@ -80,22 +80,22 @@ func (r *FileRotate) rotFile(filename string, rotate int, newLog string) {
 
 		os.Rename(newFile, path + ".001" + ext)
 	}
-    r.rotCount--
+	r.rotCount--
 }
 
 func (r *FileRotate) closeRot() {
-    for i := 10; i > 0; i-- {
+	for i := 10; i > 0; i-- {
 		// Must call Sleep here, otherwise, may panic send on closed channel
 		time.Sleep(100 * time.Millisecond)
-        if r.rotCount <= 0 {
-            break
-        }
-    }
+		if r.rotCount <= 0 {
+			break
+		}
+	}
 
-    close(r.rotFiles)
+	close(r.rotFiles)
 
-    // drain the files not rotated
-    for file := range r.rotFiles {
+	// drain the files not rotated
+	for file := range r.rotFiles {
 		fmt.Fprintf(os.Stderr, "FileLogWriter: Not rotate %s\n", file)
-    }
+	}
 }
