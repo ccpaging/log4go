@@ -185,6 +185,7 @@ func (f *Filter) Close() {
 	// sleep at most one second and let go routine running
 	// drain the log channel before closing
 	for i := 10; i > 0; i-- {
+		// Must call Sleep here, otherwise, may panic send on closed channel
 		time.Sleep(100 * time.Millisecond)
 		if len(f.rec) <= 0 {
 			break

@@ -42,6 +42,7 @@ type FileLogWriter struct {
 	rotate  int	   // Keep old logfiles (.001, .002, etc)
 	maxsize int64  // Rotate at size
 	cycle, delay0 int64  // Rotate cycle in seconds
+	FileRotate
 
 	// write loop closed
 	isRunLoop bool
@@ -57,6 +58,8 @@ func (f *FileLogWriter) Close() {
 		f.isRunLoop = false
 		<- f.closedLoop
 	}
+
+	f.closeRot()
 }
 
 // NewFileLogWriter creates a new LogWriter which writes to the given file and
@@ -64,6 +67,8 @@ func (f *FileLogWriter) Close() {
 //
 // If rotate > 0, rotate a new log file is opened, the old one is renamed
 // with a .### extension to preserve it.  
+// 
+// If flush > 0, file writer uses bufio.
 // 
 // The chainable Set* methods can be used to configure log rotation 
 // based on cycle and size. Or by change Default* variables.
@@ -87,6 +92,7 @@ func NewFileLogWriter(fname string, rotate int) *FileLogWriter {
 	}
 
 	f.filename = fname; f.fileflush = DefaultFileFlush
+	f.initRot()
 	return f
 }
 
@@ -221,7 +227,7 @@ func (f *FileLogWriter) intRotate() {
 		return
 	}
 	
-	go FileRotate(f.filename, f.rotate, newLog)
+	go f.rotFile(f.filename, f.rotate, newLog)
 }
 
 // Set option. chainable
