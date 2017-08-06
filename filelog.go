@@ -8,10 +8,19 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"sync"
+	"runtime"
 )
 
 var (
+	// Default filename. Set by init
+	DefaultFileName = ""
+
+	// Default flush size of cache writing file
+	DefaultFileFlush = 4096
+
+	// Default log file and directory perm
+	DefaultFilePerm = os.FileMode(0660)
+
 	// Default rotate cycle in seconds
 	DefaultRotCycle int64 = 86400
 
@@ -24,10 +33,22 @@ var (
 
 var DEBUG_ROTATE bool = false
 
+func init() {
+	base := filepath.Base(os.Args[0])
+	ext := filepath.Ext(base)
+	DefaultFileName = strings.TrimSuffix(base, ext) + ".log"
+	if runtime.GOOS != "windows" {
+		DefaultFileName = "~/" + DefaultFileName
+	}
+}
+
 // This log writer sends output to a file
 type FileLogWriter struct {
 	// The logging format
 	format string
+
+	filename string
+
 
 	// File header/footer
 	header, footer string
@@ -36,13 +57,12 @@ type FileLogWriter struct {
 	messages chan string
 
 	// 3nd cache, bufio
-	sync.RWMutex
-	FileWriter
+	writer *FileWriter
 
-	rotate  int	   // Keep old logfiles (.001, .002, etc)
+	maxrotate  int	   // Keep old logfiles (.001, .002, etc)
 	maxsize int64  // Rotate at size
 	cycle, delay0 int64  // Rotate cycle in seconds
-	FileRotate
+	rotate *FileRotate
 
 	// write loop closed
 	isRunLoop bool
@@ -59,13 +79,15 @@ func (f *FileLogWriter) Close() {
 		<- f.closedLoop
 	}
 
-	f.closeRot()
+	if f.rotate != nil {
+		f.rotate.Close()
+	}
 }
 
 // NewFileLogWriter creates a new LogWriter which writes to the given file and
-// has rotation enabled if rotate > 0.
+// has rotation enabled if maxrotate > 0.
 //
-// If rotate > 0, rotate a new log file is opened, the old one is renamed
+// If maxrotate > 0, rotate a new log file is opened, the old one is renamed
 // with a .### extension to preserve it.  
 // 
 // If flush > 0, file writer uses bufio.
@@ -75,24 +97,30 @@ func (f *FileLogWriter) Close() {
 //
 // The standard log-line format is:
 //   [%D %T] [%L] (%S) %M
-func NewFileLogWriter(fname string, rotate int) *FileLogWriter {
+func NewFileLogWriter(fname string, maxrotate int) *FileLogWriter {
+	if fname == "" {
+		fname = DefaultFileName
+	}
+
 	f := &FileLogWriter{
 		format:   FORMAT_DEFAULT,
 
 		messages: make(chan string,  DefaultBufferLength),
 
-		rotate:   rotate,
+		filename: fname,
+		writer:	  NewFileWriter(fname, DefaultFileFlush),
+
+		maxrotate:   maxrotate,
 		cycle:	  DefaultRotCycle,
 		delay0:	  DefaultRotDelay0,
 		maxsize:  DefaultRotSize,
+		rotate:	  NewFileRotate(),
 
 		isRunLoop: false,
 		closedLoop: make(chan struct{}),
 		resetLoop: make(chan time.Time, 5),
 	}
 
-	f.filename = fname; f.fileflush = DefaultFileFlush
-	f.initRot()
 	return f
 }
 
@@ -129,7 +157,7 @@ func (f *FileLogWriter) writeLoop() {
 		case msg, ok := <-f.messages:
 			f.writeMessage(msg)
 			if len(f.messages) <= 0 {
-				f.FlushFile()
+				f.writer.Flush()
 			}
 			if !ok { // drain the log channel and write directly
 				for msg := range f.messages {
@@ -161,9 +189,7 @@ func (f *FileLogWriter) writeLoop() {
 	}
 
 CLOSE:
-	f.Lock()
-	f.CloseFile()
-	f.Unlock()
+	f.writer.Close()
 }
 
 func (f *FileLogWriter) writeMessage(msg string) {
@@ -171,19 +197,16 @@ func (f *FileLogWriter) writeMessage(msg string) {
 		return
 	}
 	
-	f.Lock()
-	defer f.Unlock()
-
 	if len(f.header) > 0 {
-		if n, _ := f.SeekFile(0, os.SEEK_CUR); n <= 0 {
-			_, err := f.WriteString(FormatLogRecord(f.header, &LogRecord{Created: time.Now()}))
+		if n, _ := f.writer.Seek(0, os.SEEK_CUR); n <= 0 {
+			_, err := f.writer.WriteString(FormatLogRecord(f.header, &LogRecord{Created: time.Now()}))
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "FileLogWriter(%q): %s\n", f.filename, err)
 			}
 		}
 	}
 
-	_, err := f.WriteString(msg)
+	_, err := f.writer.WriteString(msg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FileLogWriter(%q): %s\n", f.filename, err)
 		return
@@ -199,22 +222,19 @@ func (f *FileLogWriter) LogWrite(rec *LogRecord) {
 }
 
 func (f *FileLogWriter) intRotate() {
-	f.Lock()
-	defer f.Unlock()
-
-	if n, _ := f.SeekFile(0, os.SEEK_CUR); n <= f.maxsize {
+	if n, _ := f.writer.Seek(0, os.SEEK_CUR); n <= f.maxsize {
 		return
 	}
 	
 	// File existed and File size > maxsize
 	
 	if len(f.footer) > 0 { // Append footer
-		f.WriteString(FormatLogRecord(f.footer, &LogRecord{Created: time.Now()}))
+		f.writer.WriteString(FormatLogRecord(f.footer, &LogRecord{Created: time.Now()}))
 	}
 
-	f.CloseFile() 
+	f.writer.Close() 
 
-	if f.rotate <= 0 {
+	if f.maxrotate <= 0 {
 		os.Remove(f.filename)
 		return
 	}
@@ -227,7 +247,7 @@ func (f *FileLogWriter) intRotate() {
 		return
 	}
 	
-	go f.rotFile(f.filename, f.rotate, newLog)
+	f.rotate.Rotate(f.filename, f.maxrotate, newLog)
 }
 
 // Set option. chainable
@@ -241,7 +261,8 @@ func (f *FileLogWriter) SetOption(name string, v interface{}) error {
 	var ok bool
 	switch name {
 	case "filename":
-		if f.filename, ok = v.(string); !ok {
+		var filename string
+		if filename, ok = v.(string); !ok {
 			return ErrBadValue
 		}
 		if len(f.filename) <= 0 {
@@ -251,27 +272,25 @@ func (f *FileLogWriter) SetOption(name string, v interface{}) error {
 		if err != nil {
 			return err
 		}
-		f.Lock()
-		f.CloseFile()
-		f.Unlock()
+		f.filename = filename
+		f.writer.SetFileName(f.filename)
 	case "flush":
+		var flush int
 		switch value := v.(type) {
 		case int:
-			f.fileflush = value
+			flush = value
 		case string:
-			f.fileflush = StrToNumSuffix(strings.Trim(value, " \r\n"), 1024)
+			flush = StrToNumSuffix(strings.Trim(value, " \r\n"), 1024)
 		default:
 			return ErrBadValue
 		}
-		f.Lock()
-		f.CloseFile()
-		f.Unlock()
-	case "rotate":
+		f.writer.SetFlush(flush)
+	case "maxrotate":
 		switch value := v.(type) {
 		case int:
-			f.rotate = value
+			f.maxrotate = value
 		case string:
-			f.rotate = StrToNumSuffix(strings.Trim(value, " \r\n"), 1)
+			f.maxrotate = StrToNumSuffix(strings.Trim(value, " \r\n"), 1)
 		default:
 			return ErrBadValue
 		}

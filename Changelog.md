@@ -1,4 +1,4 @@
-2017-08-01
+2017-08-04
 
 * Move json config and json socklog to `json` as extension
 
@@ -9,6 +9,8 @@
 * Add SetOption() to LogWriter
 
 * Add default variables about filelog and socklog
+
+* Keep only one rotate routine is running
 
 2017-07-25
 

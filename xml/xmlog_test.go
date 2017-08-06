@@ -86,7 +86,7 @@ func TestXMLConfig(t *testing.T) {
 		-->
 		<property name="format">[%D %T] [%L] (%S) %M</property>
 		<property name="flush">0</property> <!-- no bufio write -->
-		<property name="rotate">0</property> <!-- enables log rotation. 0, append -->
+		<property name="maxrotate">0</property> <!-- enables log rotation. 0, append -->
 		<property name="maxsize">0M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
 		<property name="cycle">24h</property> <!-- rotate cycle -->
 		<property name="delay0">0h</property> <!-- rotate clock since midnight -->
@@ -97,7 +97,7 @@ func TestXMLConfig(t *testing.T) {
 		<level>TRACE</level>
 		<property name="filename">_trace.xml</property>
 		<property name="flush">4k</property> <!-- bufio flush size -->
-		<property name="rotate">10</property> <!-- enables log rotation. 0, append -->
+		<property name="maxrotate">10</property> <!-- enables log rotation. 0, append -->
 		<property name="maxsize">10M</property> <!-- \d+[KMG]? Suffixes are in terms of 2**10 -->
 		<property name="cycle">24h</property> <!-- rotate cycle -->
 		<property name="delay0">0h</property> <!-- rotate clock since midnight -->
