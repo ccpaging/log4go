@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"os"
 )
 
 var (
@@ -18,7 +19,7 @@ func init() {
 	}
 }
 
-func GetGlobalLogger() Logger {
+func GetLogger() Logger {
 	return Global
 }
 
@@ -48,6 +49,50 @@ func Logf(lvl Level, format string, args ...interface{}) {
 // Wrapper for (*Logger).Logc
 func Logc(lvl Level, closure func() string) {
 	Global.intLogc(lvl, closure)
+}
+
+// Compatibility with previous log4go
+// Logs the given message and crashes the program
+func Crash(arg0 interface{}, args ...interface{}) {
+	const (
+		lvl = CRITICAL
+	)
+	msg := "Crash"
+	switch first := arg0.(type) {
+	case string:
+		// Use the string as a format string
+		Global.intLogf(lvl, first, args...)
+		msg = fmt.Sprintf(first, args...)
+	case func() string:
+		// Log the closure (no other arguments used)
+		Global.intLogc(lvl, first)
+		msg = first()
+	default:
+		// Build a format string so that it will be similar to Sprint
+		Global.intLogf(lvl, fmt.Sprint(arg0)+strings.Repeat(" %v", len(args)), args...)
+		msg = fmt.Sprintf(fmt.Sprint(arg0)+strings.Repeat(" %v", len(args)), args...)
+	}
+	Global.Close() // so that hopefully the messages get logged
+	panic(msg)
+}
+
+func Exit(arg0 interface{}, args ...interface{}) {
+	const (
+		lvl = ERROR
+	)
+	switch first := arg0.(type) {
+	case string:
+		// Use the string as a format string
+		Global.intLogf(lvl, first, args...)
+	case func() string:
+		// Log the closure (no other arguments used)
+		Global.intLogc(lvl, first)
+	default:
+		// Build a format string so that it will be similar to Sprint
+		Global.intLogf(lvl, fmt.Sprint(arg0)+strings.Repeat(" %v", len(args)), args...)
+	}
+	Global.Close() // so that hopefully the messages get logged
+	os.Exit(0)
 }
 
 // Utility for finest log messages (see Debug() for parameter explanation)

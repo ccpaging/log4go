@@ -301,6 +301,9 @@ func (f *FileLogWriter) SetOption(name string, v interface{}) error {
 		case int64:
 			f.cycle = value
 		case string:
+ 			// Each with optional fraction and a unit suffix, 
+			// such as "300ms", "-1.5h" or "2h45m". 
+			// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 			dur, _ := time.ParseDuration(value)
 			f.cycle = int64(dur/time.Millisecond)
 		default:

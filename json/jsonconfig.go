@@ -33,7 +33,7 @@ func LoadConfiguration(log l4g.Logger, filename string) {
 	LoadConfigBuf(log, buf)
 }
 
-// Parse XML configuration; see examples/example.xml for documentation
+// Parse JSON configuration; see examples/logconfig.json for documentation
 func LoadConfigBuf(log l4g.Logger, contents []byte) {
 	jc := new(l4g.LogConfig)
 	if err := json.Unmarshal(contents, jc); err != nil {
