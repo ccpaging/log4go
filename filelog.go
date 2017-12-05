@@ -127,7 +127,7 @@ func NewFileLogWriter(fname string, maxrotate int) *FileLogWriter {
 // Get first rotate time
 func (f *FileLogWriter) nextRotateTime() time.Time {
 	nrt := time.Now()
-	if f.delay0 < 0 {
+	if f.delay0 <= 0 {
 		// Now + cycle
 		nrt = nrt.Add(time.Duration(f.cycle) * time.Second)
 	} else {
@@ -265,10 +265,10 @@ func (f *FileLogWriter) SetOption(name string, v interface{}) error {
 		if filename, ok = v.(string); !ok {
 			return ErrBadValue
 		}
-		if len(f.filename) <= 0 {
+		if len(filename) <= 0 {
 			return ErrBadValue
 		}
-		err := os.MkdirAll(filepath.Dir(f.filename), DefaultFilePerm)
+		err := os.MkdirAll(filepath.Dir(filename), DefaultFilePerm)
 		if err != nil {
 			return err
 		}
@@ -305,7 +305,7 @@ func (f *FileLogWriter) SetOption(name string, v interface{}) error {
 			// such as "300ms", "-1.5h" or "2h45m". 
 			// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 			dur, _ := time.ParseDuration(value)
-			f.cycle = int64(dur/time.Millisecond)
+			f.cycle = int64(dur/time.Second)
 		default:
 			return ErrBadValue
 		}
@@ -324,7 +324,7 @@ func (f *FileLogWriter) SetOption(name string, v interface{}) error {
 			f.delay0 = value
 		case string:
 			dur, _ := time.ParseDuration(value)
-			f.delay0 = int64(dur/time.Millisecond)
+			f.delay0 = int64(dur/time.Second)
 		default:
 			return ErrBadValue
 		}
