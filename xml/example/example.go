@@ -14,7 +14,7 @@ func main() {
 	l4g.Close()
 
 	// Load the configuration (isn't this easy?)
-	log := l4g.GetGlobalLogger()
+	log := l4g.GetLogger()
 
 	xmlog.LoadConfiguration(log, "config.xml")
 
