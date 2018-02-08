@@ -100,7 +100,7 @@ func TestConsoleLogWriter(t *testing.T) {
 	console.format = "[%T %z %D] [%L] [%S] %M"
 
 	r, w := io.Pipe()
-	console.iow = w
+	console.out = w
 
 	defer console.Close()
 
@@ -529,13 +529,14 @@ func BenchmarkFileUtilNotLog(b *testing.B) {
 	os.Remove("benchlog.log")
 }
 
-// Benchmark results (darwin amd64 6g)
-//elog.BenchmarkConsoleLog           100000       22819 ns/op
-//elog.BenchmarkConsoleNotLogged    2000000         879 ns/op
-//elog.BenchmarkConsoleUtilLog        50000       34380 ns/op
-//elog.BenchmarkConsoleUtilNotLog   1000000        1339 ns/op
-//elog.BenchmarkFileLog              100000       26497 ns/op
-//elog.BenchmarkFileNotLogged       2000000         821 ns/op
-//elog.BenchmarkFileUtilLog           50000       33945 ns/op
-//elog.BenchmarkFileUtilNotLog      1000000        1258 ns/op
+// Benchmark results (windows amd64 10g)
+// BenchmarkFormatLogRecord-4        300000              4433 ns/op
+// BenchmarkConsoleLog-4            1000000              1746 ns/op
+// BenchmarkConsoleNotLogged-4     20000000                97.3 ns/op
+// BenchmarkConsoleUtilLog-4         300000              3783 ns/op
+// BenchmarkConsoleUtilNotLog-4    20000000               102 ns/op
+// BenchmarkFileLog-4                200000              9910 ns/op
+// BenchmarkFileNotLogged-4        20000000                94.9 ns/op
+// BenchmarkFileUtilLog-4            200000              9610 ns/op
+// BenchmarkFileUtilNotLog-4       20000000               103 ns/op
 

@@ -6,14 +6,29 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"github.com/daviddengcn/go-colortext"
 )
 
 var stdout io.Writer = os.Stdout
 
+var isColorful = (os.Getenv("TERM") != "" && os.Getenv("TERM") != "dumb") ||
+	 os.Getenv("ConEmuANSI") == "ON"
+
+// 0, Black; 1, Red; 2, Green; 3, Yellow; 4, Blue; 5, Purple; 6, Cyan; 7, White
+var ColorBytes = [...][]byte{
+	[]byte("\x1b[0;34m"),	   // FINEST, Blue
+	[]byte("\x1b[0;36m"),	   // FINE, Cyan
+	[]byte("\x1b[0;32m"),	   // DEBUG, Green
+	[]byte("\x1b[0;35m"), 	   // TRACE, Purple
+ 	nil,					   // INFO, Default
+ 	[]byte("\x1b[1;33m"), 	   // WARNING, Yellow
+ 	[]byte("\x1b[0;31m"), 	   // ERROR, Red
+ 	[]byte("\x1b[0;31m;47m"),  // CRITICAL, Red - White
+}
+var ColorReset = []byte("\x1b[0m")
+
 // This is the standard writer that prints to standard output.
 type ConsoleLogWriter struct {
-	iow		io.Writer
+	out		io.Writer
 	color 	bool	
 	format 	string
 }
@@ -21,7 +36,7 @@ type ConsoleLogWriter struct {
 // This creates a new ConsoleLogWriter
 func NewConsoleLogWriter() *ConsoleLogWriter {
 	c := &ConsoleLogWriter{
-		iow:	stdout,
+		out:	stdout,
 		color:	false,
 		format: "[%T %D %Z] [%L] (%S) %M",
 	}
@@ -46,22 +61,8 @@ func (c *ConsoleLogWriter) Close() {
 
 func (c *ConsoleLogWriter) LogWrite(rec *LogRecord) {
 	if c.color {
-		switch rec.Level {
-			case CRITICAL:
-				ct.ChangeColor(ct.Red, true, ct.White, false)
-			case ERROR:
-				ct.ChangeColor(ct.Red, false, 0, false)
-			case WARNING:
-				ct.ChangeColor(ct.Yellow, false, 0, false)
-			case INFO:
-				ct.ChangeColor(ct.Green, false, 0, false)
-			case DEBUG:
-				ct.ChangeColor(ct.Magenta, false, 0, false)
-			case TRACE:
-				ct.ChangeColor(ct.Cyan, false, 0, false)
-			default:
-		}
-		defer ct.ResetColor()
+		c.out.Write(ColorBytes[rec.Level])
+		defer c.out.Write(ColorReset)
 	}
-	fmt.Fprint(c.iow, FormatLogRecord(c.format, rec))
+	fmt.Fprint(c.out, FormatLogRecord(c.format, rec))
 }
